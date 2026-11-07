@@ -1,5 +1,7 @@
 # cloud-sessions
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Release](https://img.shields.io/github/v/release/ramene/cloud-sessions?sort=semver&label=release)](https://github.com/ramene/cloud-sessions/releases) [![Homebrew](https://img.shields.io/badge/homebrew-ramene%2Ftap-orange?logo=homebrew)](https://github.com/ramene/homebrew-tap) [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757)](#install) [![Rust](https://img.shields.io/badge/rust-2021-dea584?logo=rust)](Cargo.toml) [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey)](#install)
+
 Drive Claude Code **cloud sessions** from any machine: start one, track and list them, read or watch their events, send follow-ups, collect the results, export a finished session as a terminal replay (`cast`), and list the routines that start sessions on a schedule.
 
 It ships as a Claude Code plugin (slash commands and a skill), a `cloud-sessions` command-line program (JSON on stdout) and an MCP server (`cloud-sessions mcp`). All three use the same core.
@@ -286,4 +288,4 @@ MIT. Copyright (c) 2026 the cloud-sessions contributors. See `LICENSE` (also in 
 
 ## Contributing
 
-There is no `CONTRIBUTING.md` yet. Before sending a change: `cargo test --workspace --locked`, `claude plugin validate .`, and for a release `node scripts/cloud-sessions/check-release.mjs` (all manifests, `VERSION`, the formula and `CHANGELOG.md` must agree). Add a line to `CHANGELOG.md` for any change in behavior. Release steps and packaging are in `cloud/release/RELEASE.md`.
+Issues and pull requests are welcome. Build, test and style commands, the layout, and the rules for changes (JSON contract, explicit write actions, no tokens in output, placeholder-only examples) are in [CONTRIBUTING.md](CONTRIBUTING.md). Report security issues privately through GitHub's **Security → Report a vulnerability**, not in a public issue.
