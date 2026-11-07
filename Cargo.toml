@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/cloud-sessions-core", "crates/cloud-sessions-cli"]
+resolver = "2"

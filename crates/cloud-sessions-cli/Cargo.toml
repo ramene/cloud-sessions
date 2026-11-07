@@ -1,0 +1,19 @@
+[package]
+name = "cloud-sessions-cli"
+version = "0.2.1"
+edition = "2021"
+description = "cloud-sessions: start, send, events, watch and list for Claude Code cloud sessions (JSON output), plus an MCP server."
+license = "MIT"
+
+[[bin]]
+name = "cloud-sessions"
+path = "src/main.rs"
+
+[dependencies]
+cloud-sessions-core = { path = "../cloud-sessions-core" }
+serde_json = "1"
+
+# The system keychain on macOS and Windows only. On Linux a Secret Service client would link libdbus at runtime,
+# which users must not need, so Linux keeps a token in a private 0600 file instead.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native"] }

@@ -1,0 +1,32 @@
+{
+ "data": [
+  {
+   "event_id": "00000000-0000-4000-8000-00000000000f",
+   "event_type": "user",
+   "created_at": "2026-01-01T10:00:00.000000Z",
+   "sequence_num": 1,
+   "payload": {
+    "type": "user",
+    "message": {
+     "role": "user",
+     "content": "(example) Compare two libraries and open a PR."
+    }
+   }
+  },
+  {
+   "event_id": "00000000-0000-4000-8000-000000000010",
+   "event_type": "result",
+   "created_at": "2026-01-01T10:05:00.000000Z",
+   "sequence_num": 2,
+   "payload": {
+    "type": "result",
+    "subtype": "success",
+    "is_error": false,
+    "num_turns": 12,
+    "duration_ms": 120000,
+    "total_cost_usd": 1.25,
+    "result": "All example items are done and pushed to the same PR (not merged).\n\n- **Head sha:** `0123456789abcdef0123456789abcdef01234567`\n- **PR:** https://github.com/your-org/example-repo/pull/1\n- **`RESULT.md` line 1:** `PARTIAL - example content head 0123456789abcdef0123456789abcdef01234567`\n\n1. **Example item:** this text is synthetic and exists only to exercise the result parser."
+   }
+  }
+ ]
+}

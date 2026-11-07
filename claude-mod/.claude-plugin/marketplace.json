@@ -1,0 +1,15 @@
+{
+  "name": "cloud-sessions",
+  "owner": { "name": "the cloud-sessions contributors" },
+  "description": "Drive Claude Code cloud sessions from any Claude Code session.",
+  "plugins": [
+    {
+      "name": "cloud-sessions",
+      "source": "./cloud-sessions",
+      "version": "0.2.1",
+      "description": "Start, list, read, watch and send into Claude Code cloud sessions from any Claude Code session.",
+      "author": { "name": "the cloud-sessions contributors" },
+      "license": "MIT"
+    }
+  ]
+}

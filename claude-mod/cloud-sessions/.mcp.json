@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cloud-sessions": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/cloud-sessions",
+      "args": ["mcp"]
+    }
+  }
+}

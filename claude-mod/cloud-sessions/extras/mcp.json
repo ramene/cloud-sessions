@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cloud-sessions": {
+      "command": "cloud-sessions",
+      "args": ["mcp"]
+    }
+  }
+}

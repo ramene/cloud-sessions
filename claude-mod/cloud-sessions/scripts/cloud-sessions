@@ -1,0 +1,88 @@
+#!/bin/sh
+# cloud-sessions launcher: runs the prebuilt `cloud-sessions` binary, fetching it first if needed. Needs nothing
+# beyond what macOS and Linux ship (sh, uname, tar, curl or wget, and sha256sum or shasum or openssl).
+#
+# Where the binary comes from, in order:
+#   1. $CLOUD_SESSIONS_BIN (an explicit path, for development or an offline mirror)
+#   2. bin/<target>/cloud-sessions inside this plugin (when a release bundles it)
+#   3. the plugin's data folder, from an earlier download
+#   4. the release for this plugin's version, downloaded once; its published SHA-256 must match or nothing is installed
+# Any failure prints ONE line of JSON on stdout, {"ok":false,"error":"..."}, and exits 1: no stack trace, no partial install.
+set -eu
+
+fail() {
+  msg=$(printf '%s' "$1" | tr -d '"\\' | tr '\n' ' ')
+  printf '{"ok":false,"error":"%s"}\n' "$msg"
+  exit 1
+}
+
+here=$(cd "$(dirname "$0")" && pwd)
+root=$(dirname "$here")
+version=$(tr -d ' \n\r' < "$root/VERSION" 2>/dev/null) || fail "cloud-sessions: the plugin is missing its VERSION file; reinstall the plugin."
+
+case "$(uname -s)" in
+  Darwin) target=macos-universal ;;
+  Linux)
+    case "$(uname -m)" in
+      x86_64|amd64) target=linux-x86_64 ;;
+      aarch64|arm64) target=linux-aarch64 ;;
+      *) fail "cloud-sessions has no build for the CPU $(uname -m) on Linux (supported: x86_64, arm64)." ;;
+    esac ;;
+  *) fail "cloud-sessions has no build for $(uname -s) (supported: macOS, Linux)." ;;
+esac
+[ "${CLOUD_SESSIONS_PRINT_TARGET:-}" = 1 ] && { echo "$target"; exit 0; }
+
+if [ -n "${CLOUD_SESSIONS_BIN:-}" ]; then
+  [ -x "$CLOUD_SESSIONS_BIN" ] || fail "CLOUD_SESSIONS_BIN is set but is not an executable file."
+  exec "$CLOUD_SESSIONS_BIN" "$@"
+fi
+# A cloud-sessions program already installed on PATH (Homebrew, cargo install, a release archive) wins over a download.
+for cand in $(type -ap cloud-sessions 2>/dev/null); do
+  [ -x "$cand" ] || continue
+  head -c 2 "$cand" 2>/dev/null | grep -q '#!' && continue   # a script = a launcher copy, skip
+  exec "$cand" "$@"
+done
+if [ -x "$root/bin/$target/cloud-sessions" ]; then
+  exec "$root/bin/$target/cloud-sessions" "$@"
+fi
+
+data=${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/cloud-sessions-plugin}
+dest="$data/$version-$target"
+if [ -x "$dest/cloud-sessions" ]; then
+  exec "$dest/cloud-sessions" "$@"
+fi
+
+# --- first use: download, verify, install ---
+base=${CLOUD_SESSIONS_RELEASE_BASE:-https://github.com/ramene/cloud-sessions/releases/download/cloud-sessions-v$version}
+case "$base" in https://*|file://*) ;; *) fail "CLOUD_SESSIONS_RELEASE_BASE must be an https:// or file:// address." ;; esac
+asset="cloud-sessions-$version-$target.tar.gz"
+
+fetch() { # url, output file
+  if command -v curl >/dev/null 2>&1; then curl -fsL --retry 2 --connect-timeout 15 --max-time 180 -o "$2" "$1"
+  elif command -v wget >/dev/null 2>&1; then wget -q -T 60 -O "$2" "$1"
+  else return 2; fi
+}
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+  elif command -v openssl >/dev/null 2>&1; then openssl dgst -sha256 "$1" | sed 's/.*= //'
+  else return 2; fi
+}
+
+mkdir -p "$data" 2>/dev/null || fail "cloud-sessions could not create its folder $data."
+tmp=$(mktemp -d "$data/.download.XXXXXX" 2>/dev/null) || fail "cloud-sessions could not create a temporary folder in $data."
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 || fail "cloud-sessions needs curl or wget to download itself once; neither was found."
+fetch "$base/$asset" "$tmp/$asset" || fail "cloud-sessions could not download $asset from the release (offline, or the release is not public yet). Nothing was installed."
+fetch "$base/$asset.sha256" "$tmp/$asset.sha256" || fail "cloud-sessions could not download the checksum for $asset, so it will not install the binary."
+want=$(cut -d' ' -f1 < "$tmp/$asset.sha256" | tr -d '\r\n')
+got=$(sha256 "$tmp/$asset") || fail "cloud-sessions needs sha256sum, shasum or openssl to verify its download; none was found."
+[ -n "$want" ] && [ "$want" = "$got" ] || fail "cloud-sessions refused the download: its SHA-256 does not match the published checksum. Nothing was installed."
+
+mkdir -p "$tmp/x"
+tar -xzf "$tmp/$asset" -C "$tmp/x" --strip-components=1 "cloud-sessions-$version-$target/cloud-sessions" >/dev/null 2>&1 || fail "cloud-sessions could not unpack the download. Nothing was installed."
+[ -f "$tmp/x/cloud-sessions" ] || fail "the download did not contain the cloud-sessions program. Nothing was installed."
+chmod 755 "$tmp/x/cloud-sessions"
+mkdir -p "$dest" && mv -f "$tmp/x/cloud-sessions" "$dest/cloud-sessions" || fail "cloud-sessions could not install into $dest."
+exec "$dest/cloud-sessions" "$@"
