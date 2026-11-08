@@ -4,6 +4,11 @@ version = "0.2.1"
 edition = "2021"
 description = "Start, send into, read and watch Claude Code cloud sessions (no UI, no Tauri)."
 license = "MIT"
+repository = "https://github.com/ramene/cloud-sessions"
+homepage = "https://github.com/ramene/cloud-sessions"
+readme = "README.md"
+keywords = ["claude", "claude-code", "agents", "cli", "sessions"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
