@@ -2,6 +2,32 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Release](https://img.shields.io/github/v/release/ramene/cloud-sessions?sort=semver&label=release)](https://github.com/ramene/cloud-sessions/releases) [![Homebrew](https://img.shields.io/badge/homebrew-ramene%2Ftap-orange?logo=homebrew)](https://github.com/ramene/homebrew-tap) [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757)](#install) [![Rust](https://img.shields.io/badge/rust-2021-dea584?logo=rust)](Cargo.toml) [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey)](#install)
 
+
+## 中文简介
+
+**cloud-sessions**:在任意机器上驱动 Claude Code **云端会话**:`start` 为某个仓库启动会话、`track` / `list` 跟踪与列出、`events` / `watch` 读取并跟随事件、`send` 发送后续消息、`collect` 汇总结果,以及 `cast` 导出终端回放。MIT 许可,同样提供 CLI、Claude Code 插件和 MCP 服务器。
+
+安装(与英文 README 相同):
+
+```bash
+claude plugin marketplace add ramene/cloud-sessions
+claude plugin install cloud-sessions@cloud-sessions
+```
+
+或 Homebrew:`brew install ramene/tap/cloud-sessions`
+
+三行示例:
+
+```bash
+cloud-sessions allow --dir ~/code/my-repo
+cloud-sessions start --dir ~/code/my-repo --prompt "Add a build badge to the README and open a pull request"
+cloud-sessions watch <session>
+```
+
+**重要说明**:读取会话事件使用的是未公开文档化的接口(例如 `GET /v1/code/sessions/<id>/events`;`list --unofficial` 同样如此),可能随时变化。`claude setup-token` 生成的令牌只能用于推理,无法读取会话;独立读取需要你显式同意使用 Claude Code 自己的登录。云端会话按正常方式计费,默认每天最多启动 5 个。
+
+完整英文文档:下文 / <https://github.com/ramene/cloud-sessions>
+
 Drive Claude Code **cloud sessions** from any machine: start one, track and list them, read or watch their events, send follow-ups, collect the results, export a finished session as a terminal replay (`cast`), and list the routines that start sessions on a schedule.
 
 It ships as a Claude Code plugin (slash commands and a skill), a `cloud-sessions` command-line program (JSON on stdout) and an MCP server (`cloud-sessions mcp`). All three use the same core.
