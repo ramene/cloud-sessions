@@ -6,7 +6,7 @@
     {
       "name": "cloud-sessions",
       "source": "./cloud-sessions",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "description": "Start, list, read, watch and send into Claude Code cloud sessions from any Claude Code session.",
       "author": { "name": "the cloud-sessions contributors" },
       "license": "MIT"

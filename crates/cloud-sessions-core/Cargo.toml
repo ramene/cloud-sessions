@@ -1,6 +1,6 @@
 [package]
 name = "cloud-sessions-core"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "Start, send into, read and watch Claude Code cloud sessions (no UI, no Tauri)."
 license = "MIT"

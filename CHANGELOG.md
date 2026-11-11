@@ -3,6 +3,13 @@
 The Cloud sessions mod (`cloud-sessions-core`, the `cloud-sessions` CLI and the Claude Code plugin) is versioned
 together and released on tags named `cloud-sessions-vX.Y.Z`.
 
+## 0.2.2
+
+- Fix (login): reading with Claude Code's login now honours `CLAUDE_CONFIG_DIR`. The login file is `$CLAUDE_CONFIG_DIR/.credentials.json` when that is set (and not empty), else `~/.claude/.credentials.json`.
+- Fix (login, macOS): when the keychain has no Claude Code login (no item, or a locked keychain over `ssh`), the login file is read instead. The keychain still comes first. The expiry check applies to both; an expired login is not sent and no token is printed.
+- The lookup order is the same as in 0.2.1: Claude Code's login (after your opt-in), then the 0600 token file, then the keychain item of cloud-sessions.
+- Docs: a "Control room" section. The control room that shows cloud sessions is in [remote-sessions](https://github.com/ramene/remote-sessions) (`remote-sessions control`, from remote-sessions 0.3.0), with an image at `docs/images/control-room.svg` (placeholder data). The same paragraph is in README.zh-CN.md.
+
 ## 0.2.1
 
 privacy: examples, fixtures and defaults no longer name the authors' machines, sessions or private repositories.
