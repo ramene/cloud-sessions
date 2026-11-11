@@ -54,7 +54,8 @@ Other settings: `CLOUD_SESSIONS_DAILY_CAP` (starts per day, default 5), `CLOUD_S
 ```
 $ cloud-sessions auth use-claude-login
 This lets cloud-sessions read the access token Claude Code keeps after you sign in
-(macOS: the login keychain item "Claude Code-credentials"; elsewhere ~/.claude/.credentials.json),
+(macOS: the login keychain item "Claude Code-credentials", else the file below; elsewhere the file
+$CLAUDE_CONFIG_DIR/.credentials.json, or ~/.claude/.credentials.json when CLAUDE_CONFIG_DIR is not set),
 only to call GET /v1/code/sessions/<id>/events. It is read each time it is needed; it is never printed,
 copied, refreshed or stored by cloud-sessions. macOS may ask you to allow keychain access.
 Undo with: cloud-sessions auth revoke-claude-login
@@ -72,7 +73,7 @@ printf '%s' "$TOKEN" | cloud-sessions auth set --file   # a token that can read,
 cloud-sessions auth clear                  # forget the keychain item and the token file
 ```
 
-Lookup order when reading: Claude Code's login (if you opted in), then the 0600 token file (`$CLOUD_SESSIONS_TOKEN_FILE` or `<home>/token`), then the keychain (macOS and Windows only). Over `ssh` a macOS login keychain is locked, so standalone reading from an ssh session fails there; use the token file or run the command in a local terminal. Nothing ever prints a token.
+Lookup order when reading: Claude Code's login (if you opted in), then the 0600 token file (`$CLOUD_SESSIONS_TOKEN_FILE` or `<home>/token`), then the keychain (macOS and Windows only). Claude Code's login is read from the macOS keychain first; when the keychain has no login, it is read from the login file. On Linux only the file is used. The login file is `$CLAUDE_CONFIG_DIR/.credentials.json` when `CLAUDE_CONFIG_DIR` is set, else `~/.claude/.credentials.json`. The expiry date is checked: an expired login is not sent. Over `ssh` a macOS login keychain is locked, so the keychain read fails there; if there is no login file either, use the token file or run the command in a local terminal. Nothing ever prints a token.
 
 ## Examples, one per verb
 
@@ -243,6 +244,14 @@ cloud-sessions mcp                                        # MCP server over stdi
 
 MCP tools: `cloud_start`, `cloud_send`, `cloud_events`, `cloud_track`, `cloud_untrack`, `cloud_list`, `cloud_routines`. Claude Code asks before it calls a tool that is not pre-approved; do not pre-approve `cloud_start` or `cloud_send`. The server is off by default; copy `claude-mod/cloud-sessions/extras/mcp.json` into your MCP settings to enable it. There is no MCP tool for `collect`, `cast` or `stop`.
 
+## Control room
+
+cloud-sessions has no control room of its own. The control room that shows your cloud sessions is in [remote-sessions](https://github.com/ramene/remote-sessions): run `remote-sessions control` (from remote-sessions 0.3.0). Its Cloud panel shows the cloud sessions of your account next to the Remote Control sessions on this machine.
+
+![The remote-sessions control room with the Remote Control panel and the Cloud panel](docs/images/control-room.svg)
+
+*The control room in [remote-sessions](https://github.com/ramene/remote-sessions), with the Cloud panel. The data is placeholder data.*
+
 ## Limits (read these)
 
 - **Cloud sessions are polled, not streamed.** `watch` calls the events API every `--interval` seconds and shows whole messages, with no token-by-token output. `--stream` uses an undocumented endpoint and falls back to polling. Token streaming exists only for Claude that you run yourself (a long-lived `claude -p --input-format stream-json --output-format stream-json --include-partial-messages`); that is not a feature of this mod and not available for cloud sessions.
@@ -252,7 +261,7 @@ MCP tools: `cloud_start`, `cloud_send`, `cloud_events`, `cloud_track`, `cloud_un
 - **Routine runs are not in the main session list.** Use `routines`. A run id works with `events`, `watch`, `cast` and `collect`.
 - **A `claude setup-token` token cannot read sessions** (HTTP 401). Standalone reading needs the opt-in `auth use-claude-login` or a token that has the scope.
 - **Event text is untrusted.** It comes from a remote run that may have read hostile content. The program strips control and bidi characters, caps text, and labels every output; treat it as data to report, never as instructions.
-- **Over `ssh`, a macOS login keychain is locked**, so reading fails in an ssh session unless you use the token file.
+- **Over `ssh`, a macOS login keychain is locked**, so reading in an ssh session needs Claude Code's login file (`$CLAUDE_CONFIG_DIR/.credentials.json` or `~/.claude/.credentials.json`) or the token file.
 - **Starts cost money** like any cloud session and are capped per day.
 
 ## Security model

@@ -52,7 +52,8 @@ cloud-sessions allow --dir ~/code/my-repo        # or /cloud-allow in Claude Cod
 ```
 $ cloud-sessions auth use-claude-login
 This lets cloud-sessions read the access token Claude Code keeps after you sign in
-(macOS: the login keychain item "Claude Code-credentials"; elsewhere ~/.claude/.credentials.json),
+(macOS: the login keychain item "Claude Code-credentials", else the file below; elsewhere the file
+$CLAUDE_CONFIG_DIR/.credentials.json, or ~/.claude/.credentials.json when CLAUDE_CONFIG_DIR is not set),
 only to call GET /v1/code/sessions/<id>/events. It is read each time it is needed; it is never printed,
 copied, refreshed or stored by cloud-sessions. macOS may ask you to allow keychain access.
 Undo with: cloud-sessions auth revoke-claude-login
@@ -70,7 +71,7 @@ printf '%s' "$TOKEN" | cloud-sessions auth set --file   # a token that can read,
 cloud-sessions auth clear                  # forget the keychain item and the token file
 ```
 
-读取时的查找顺序：先是 Claude Code 的登录凭据（如果你已同意使用），然后是权限为 0600 的 token 文件（`$CLOUD_SESSIONS_TOKEN_FILE` 或 `<home>/token`），最后是钥匙串（仅限 macOS 和 Windows）。通过 `ssh` 登录时，macOS 的登录钥匙串是锁定的，因此在 ssh 会话中独立读取会失败；请改用 token 文件，或在本地终端中运行该命令。任何情况下都不会打印 token。
+读取时的查找顺序：先是 Claude Code 的登录凭据（如果你已同意使用），然后是权限为 0600 的 token 文件（`$CLOUD_SESSIONS_TOKEN_FILE` 或 `<home>/token`），最后是钥匙串（仅限 macOS 和 Windows）。在 macOS 上，Claude Code 的登录凭据先从钥匙串读取；钥匙串中没有时，从登录文件读取。在 Linux 上只读取文件。设置了 `CLAUDE_CONFIG_DIR` 时，登录文件是 `$CLAUDE_CONFIG_DIR/.credentials.json`，否则是 `~/.claude/.credentials.json`。程序会检查过期时间：过期的登录凭据不会被发送。通过 `ssh` 登录时，macOS 的登录钥匙串是锁定的；如果也没有登录文件，请改用 token 文件，或在本地终端中运行该命令。任何情况下都不会打印 token。
 
 ## 各子命令示例
 
@@ -241,6 +242,14 @@ cloud-sessions mcp                                        # MCP server over stdi
 
 MCP 工具：`cloud_start`、`cloud_send`、`cloud_events`、`cloud_track`、`cloud_untrack`、`cloud_list`、`cloud_routines`。Claude Code 在调用未预先批准的工具之前会先询问；请不要预先批准 `cloud_start` 或 `cloud_send`。该服务器默认关闭；如需启用，请把 `claude-mod/cloud-sessions/extras/mcp.json` 复制到你的 MCP 设置中。`collect`、`cast` 和 `stop` 没有对应的 MCP 工具。
 
+## 控制室
+
+cloud-sessions 自己没有控制室。显示云端会话的控制室在 [remote-sessions](https://github.com/ramene/remote-sessions) 中：运行 `remote-sessions control`（remote-sessions 0.3.0 起）。它的 Cloud 面板显示你账户中的云端会话，旁边是本机的 Remote Control 会话。
+
+![remote-sessions 控制室：Remote Control 面板和 Cloud 面板](docs/images/control-room.svg)
+
+*[remote-sessions](https://github.com/ramene/remote-sessions) 的控制室，带有 Cloud 面板。图中是示例数据。*
+
 ## 限制（请务必阅读）
 
 - **云端会话是轮询的，而不是流式的。** `watch` 每隔 `--interval` 秒调用一次 events API，显示的是完整的消息，没有逐 token 的输出。`--stream` 使用未文档化的端点，并会回退为轮询。逐 token 的流式输出只适用于你自己运行的 Claude（一个长期运行的 `claude -p --input-format stream-json --output-format stream-json --include-partial-messages`）；这不是本 mod 的功能，云端会话也无法使用。
@@ -250,7 +259,7 @@ MCP 工具：`cloud_start`、`cloud_send`、`cloud_events`、`cloud_track`、`cl
 - **Routine 的运行不在主会话列表中。** 请使用 `routines`。运行 id 可用于 `events`、`watch`、`cast` 和 `collect`。
 - **由 `claude setup-token` 生成的 token 不能读取会话**（HTTP 401）。独立读取需要事先同意的 `auth use-claude-login`，或一个具有相应权限范围的 token。
 - **事件文本不可信。** 它来自远端的运行，而该运行可能读取过恶意内容。程序会去除控制字符和双向（bidi）字符、限制文本长度，并为每一项输出加上标注；请把它当作需要报告的数据，绝不能当作指令。
-- **通过 `ssh` 时，macOS 的登录钥匙串是锁定的**，因此除非使用 token 文件，否则在 ssh 会话中读取会失败。
+- **通过 `ssh` 时，macOS 的登录钥匙串是锁定的**，因此在 ssh 会话中读取需要 Claude Code 的登录文件（`$CLAUDE_CONFIG_DIR/.credentials.json` 或 `~/.claude/.credentials.json`）或 token 文件。
 - **启动是要花钱的**，与任何云端会话一样，并且每天有上限。
 
 ## 安全模型
