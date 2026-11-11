@@ -37,20 +37,33 @@ pub fn parse_claude_credentials(text: &str) -> Option<(String, Option<i64>)> {
     plausible(&token).then(|| (token, oauth["expiresAt"].as_i64()))
 }
 
-/// Read Claude Code's own login credential. On macOS that is the login keychain item "Claude Code-credentials"
-/// (read with the `security` tool at `security_bin`, which may prompt the user); elsewhere the file `file`
-/// (normally `~/.claude/.credentials.json`). An expired token is an error: this crate does not refresh it, so
-/// run `claude` once to renew it.
+/// Claude Code's login from the macOS keychain item "Claude Code-credentials" (read with the `security` tool at
+/// `security_bin`, which may prompt the user). None when the keychain has no readable login (no item, a locked
+/// keychain over ssh, or text that is not a credential).
+fn keychain_login(security_bin: &Path) -> Option<(String, Option<i64>)> {
+    let mut command = std::process::Command::new(security_bin);
+    command.args(["find-generic-password", "-s", "Claude Code-credentials", "-w"]);
+    let out = crate::cli::run_bounded(command, Duration::from_secs(60), 64 * 1024).ok()?;
+    parse_claude_credentials(&String::from_utf8_lossy(&out))
+}
+
+/// Read Claude Code's own login credential. With `use_keychain` (macOS) the login keychain item
+/// "Claude Code-credentials" comes first; when the keychain has no login, the file `file` is used. Elsewhere only
+/// the file (`$CLAUDE_CONFIG_DIR/.credentials.json`, else `~/.claude/.credentials.json`; the caller picks it).
+/// An expired token is an error: this crate does not refresh it, so run `claude` once to renew it.
 pub fn claude_login_token(use_keychain: bool, security_bin: &Path, file: &Path, now_ms: i64) -> Result<String> {
-    let text = if use_keychain {
-        let mut command = std::process::Command::new(security_bin);
-        command.args(["find-generic-password", "-s", "Claude Code-credentials", "-w"]);
-        let out = crate::cli::run_bounded(command, Duration::from_secs(60), 64 * 1024).map_err(|_| "Could not read Claude Code's login from the keychain.".to_string())?;
-        String::from_utf8_lossy(&out).into_owned()
-    } else {
-        std::fs::read_to_string(file).map_err(|_| "Claude Code's login credential was not found. Sign in with `claude` first.".to_string())?
+    let found = if use_keychain { keychain_login(security_bin) } else { None };
+    let (token, expires) = match found {
+        Some(login) => login,
+        None => {
+            let text = std::fs::read_to_string(file).map_err(|_| if use_keychain {
+                "Claude Code's login credential was not found in the keychain or in its credentials file. Sign in with `claude` first.".to_string()
+            } else {
+                "Claude Code's login credential was not found. Sign in with `claude` first.".to_string()
+            })?;
+            parse_claude_credentials(&text).ok_or("Claude Code's login credential was not found or is not readable. Sign in with `claude` first.")?
+        }
     };
-    let (token, expires) = parse_claude_credentials(&text).ok_or("Claude Code's login credential was not found or is not readable. Sign in with `claude` first.")?;
     if expires.is_some_and(|e| e <= now_ms) { return Err("Claude Code's login has expired. Run `claude` once to renew it, then try again.".into()); }
     Ok(token)
 }
@@ -92,5 +105,33 @@ mod tests {
         let security = fake_claude(&dir, &format!("printf '%s\\n' \"$@\" > {}\ncat {}", args.display(), file.display()));
         assert_eq!(claude_login_token(true, &security, &dir.join("unused"), 1000).unwrap(), "sk-ant-oat01-login");
         assert_eq!(std::fs::read_to_string(&args).unwrap().lines().collect::<Vec<_>>(), ["find-generic-password", "-s", "Claude Code-credentials", "-w"]);
+    }
+
+    #[test]
+    fn macos_keychain_without_a_login_falls_back_to_the_credentials_file() {
+        let dir = scratch("fallback");
+        let file = dir.join("creds.json");
+        std::fs::write(&file, r#"{"claudeAiOauth":{"accessToken":"file-login","expiresAt":2000}}"#).unwrap();
+        // `security` exits 44 with no output when the item does not exist.
+        let sub = |n: &str| { let d = dir.join(n); std::fs::create_dir_all(&d).unwrap(); d };
+        let none = fake_claude(&sub("none"), "exit 44");
+        assert_eq!(claude_login_token(true, &none, &file, 1000).unwrap(), "file-login");
+        // A keychain answer that is not a credential falls back too.
+        let junk = fake_claude(&sub("junk"), "echo not-json");
+        assert_eq!(claude_login_token(true, &junk, &file, 1000).unwrap(), "file-login");
+        // A security tool that cannot start (missing binary) falls back too.
+        assert_eq!(claude_login_token(true, &dir.join("no-such-security"), &file, 1000).unwrap(), "file-login");
+        // The expiry check applies to the file token.
+        assert!(claude_login_token(true, &none, &file, 3000).unwrap_err().contains("expired"));
+        // Nothing in either place: one clear error, no token text.
+        let err = claude_login_token(true, &none, &dir.join("missing.json"), 0).unwrap_err();
+        assert!(err.contains("keychain or in its credentials file"), "{err}");
+        // The keychain wins over the file when it has a login.
+        let other = dir.join("kc.json");
+        std::fs::write(&other, r#"{"claudeAiOauth":{"accessToken":"keychain-login","expiresAt":2000}}"#).unwrap();
+        let kc = fake_claude(&sub("kc"), &format!("cat {}", other.display()));
+        assert_eq!(claude_login_token(true, &kc, &file, 1000).unwrap(), "keychain-login");
+        // An expired keychain login is an error (it is not replaced by the file).
+        assert!(claude_login_token(true, &kc, &file, 3000).unwrap_err().contains("expired"));
     }
 }

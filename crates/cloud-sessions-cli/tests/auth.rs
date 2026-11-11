@@ -13,6 +13,7 @@ fn token_file_and_opt_in_claude_login_never_leak_the_token() {
     std::env::set_var("HOME", &fake_home);
     std::env::remove_var("CLOUD_SESSIONS_TOKEN_FILE");
     std::env::remove_var("CLOUD_SESSIONS_USE_CLAUDE_LOGIN");
+    std::env::remove_var("CLAUDE_CONFIG_DIR");
     let mut sink = Vec::new();
 
     // set --file: private file, and resolve reads it. Status never shows a value.
@@ -45,6 +46,15 @@ fn token_file_and_opt_in_claude_login_never_leak_the_token() {
         assert_eq!((yes["ok"].clone(), yes["readable_now"].clone()), (serde_json::json!(true), serde_json::json!(true)));
         assert!(!yes.to_string().contains("login-token-456"));
         assert_eq!(resolve(&home).unwrap(), "login-token-456");
+        // CLAUDE_CONFIG_DIR moves the login file; set but empty, it is ignored.
+        let work = root.join("claude-work");
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::write(work.join(".credentials.json"), r#"{"claudeAiOauth":{"accessToken":"work-token-789","expiresAt":99999999999999}}"#).unwrap();
+        std::env::set_var("CLAUDE_CONFIG_DIR", &work);
+        assert_eq!(resolve(&home).unwrap(), "work-token-789");
+        std::env::set_var("CLAUDE_CONFIG_DIR", "");
+        assert_eq!(resolve(&home).unwrap(), "login-token-456");
+        std::env::remove_var("CLAUDE_CONFIG_DIR");
         std::fs::write(fake_home.join(".claude/.credentials.json"), r#"{"claudeAiOauth":{"accessToken":"old","expiresAt":1}}"#).unwrap();
         assert!(resolve(&home).unwrap_err().contains("expired"));
     }
@@ -57,5 +67,5 @@ fn token_file_and_opt_in_claude_login_never_leak_the_token() {
     auth(&home, &args(&["clear"]), &mut std::io::empty(), false, &mut sink).unwrap();
     assert!(resolve(&home).unwrap_err().contains("use-claude-login"));
     let all = String::from_utf8_lossy(&sink);
-    assert!(!all.contains("file-token-123") && !all.contains("login-token-456"));
+    assert!(!all.contains("file-token-123") && !all.contains("login-token-456") && !all.contains("work-token-789"));
 }

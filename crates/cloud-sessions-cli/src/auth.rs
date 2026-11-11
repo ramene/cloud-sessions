@@ -1,6 +1,7 @@
 //! Where the read token comes from, and how the user manages it. Nothing here ever prints a token.
 //!
-//! Sources, in order: (1) Claude Code's own login, only after the user opted in at a terminal; (2) a private
+//! Sources, in order: (1) Claude Code's own login, only after the user opted in at a terminal (macOS: the
+//! keychain, else the login file; elsewhere the login file; the file honours `$CLAUDE_CONFIG_DIR`); (2) a private
 //! token file (`$CLOUD_SESSIONS_TOKEN_FILE` or `<home>/token`, mode 0600); (3) the system keychain. A token from
 //! `claude setup-token` is inference-only and cannot read sessions, so reading normally needs (1); starting and
 //! sending use the `claude` CLI's own login and need none of this.
@@ -21,9 +22,17 @@ pub fn token_file(home: &Path) -> PathBuf {
 pub fn has_consent(home: &Path) -> bool {
     consent_path(home).is_file() || std::env::var("CLOUD_SESSIONS_USE_CLAUDE_LOGIN").is_ok_and(|v| v == "1")
 }
-fn claude_creds_file() -> PathBuf {
-    std::env::var_os("HOME").map(|h| Path::new(&h).join(".claude/.credentials.json")).unwrap_or_default()
+/// Claude Code's login file: `$CLAUDE_CONFIG_DIR/.credentials.json` when that is set (and not empty), else
+/// `~/.claude/.credentials.json`. `env` reads one environment variable (injected so tests do not change the process).
+pub fn claude_creds_file_from(env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
+    let set = |k: &str| env(k).filter(|v| !v.trim().is_empty());
+    match (set("CLAUDE_CONFIG_DIR"), set("HOME")) {
+        (Some(dir), _) => Path::new(&dir).join(".credentials.json"),
+        (None, Some(home)) => Path::new(&home).join(".claude/.credentials.json"),
+        (None, None) => PathBuf::new(),
+    }
 }
+fn claude_creds_file() -> PathBuf { claude_creds_file_from(&|k| std::env::var(k).ok()) }
 fn now_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
 }
@@ -53,7 +62,7 @@ pub fn resolve(home: &Path) -> Result<String> {
     keychain().ok_or_else(|| "Reading events needs a token. Run `cloud-sessions auth use-claude-login` in a terminal to reuse Claude Code's own login (a `claude setup-token` token cannot read sessions), or store a token that can with `cloud-sessions auth set` (stdin; add --file where the keychain is locked).".into())
 }
 
-const EXPLAIN: &str = "This lets cloud-sessions read the access token Claude Code keeps after you sign in\n(macOS: the login keychain item \"Claude Code-credentials\"; elsewhere ~/.claude/.credentials.json),\nonly to call GET /v1/code/sessions/<id>/events. It is read each time it is needed; it is never printed,\ncopied, refreshed or stored by cloud-sessions. macOS may ask you to allow keychain access.\nUndo with: cloud-sessions auth revoke-claude-login\nType yes to allow: ";
+const EXPLAIN: &str = "This lets cloud-sessions read the access token Claude Code keeps after you sign in\n(macOS: the login keychain item \"Claude Code-credentials\", else the file below; elsewhere the file\n$CLAUDE_CONFIG_DIR/.credentials.json, or ~/.claude/.credentials.json when CLAUDE_CONFIG_DIR is not set),\nonly to call GET /v1/code/sessions/<id>/events. It is read each time it is needed; it is never printed,\ncopied, refreshed or stored by cloud-sessions. macOS may ask you to allow keychain access.\nUndo with: cloud-sessions auth revoke-claude-login\nType yes to allow: ";
 
 fn write_private(path: &Path, token: &str) -> Result<()> {
     if let Some(dir) = path.parent() { std::fs::create_dir_all(dir).map_err(|e| format!("Could not create the config folder: {e}"))?; }
