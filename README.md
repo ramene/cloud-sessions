@@ -6,6 +6,12 @@
 
 [English](README.md) · [中文 (README.zh-CN.md)](README.zh-CN.md)
 
+## Getting started
+
+![Install flow: brew, binaries on PATH, claude plugin, then the control room](docs/images/install-flow.svg)
+
+Install with `brew install ramene/tap/cloud-sessions`, add the plugin, log in, and start your first cloud session. The [getting-started guide](docs/getting-started.md) shows each step with a picture.
+
 ## Install
 
 Two parts. The plugin is enough for read, watch, send and track. The program is needed for start, list, collect, cast, routines, stop and the MCP server.

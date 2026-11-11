@@ -4,6 +4,12 @@
 
 [English](README.md) · 中文
 
+## 快速入门
+
+![安装流程：brew、PATH 上的程序、claude 插件，然后是控制室](docs/images/install-flow.svg)
+
+用 `brew install ramene/tap/cloud-sessions` 安装，添加插件，登录，然后启动第一个云端会话。每一步都有图片，见[快速入门指南（英文）](docs/getting-started.md)。
+
 ## 安装
 
 分两部分。只装插件就足以完成 read、watch、send 和 track。start、list、collect、cast、routines、stop 以及 MCP 服务器则需要安装程序本体。
