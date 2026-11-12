@@ -139,7 +139,7 @@ cloud-sessions list --unofficial     # the account view plus the raw API body (f
 | Login allowed, no sessions | an empty account list | start one with `/cloud-start` or `claude --cloud`, or track one with `/cloud-track` |
 | Account list failed | the tracked sessions | one `fallback` line: the reason and the fix |
 
-Result (**shape**): `{"ok":true,"view":"account"|"tracked","sessions":[{"session_id","title","label","state","repo","last_activity","url","tracked","in_account"}],"routines":[…],"hint":null|"…","fallback":null|"…","tracked":[…]}`. The account view also carries `untrusted`, `unofficial`, `routines_error` and `routine_runs_hidden: true`: runs started by a routine are **not** in the sessions list; they are under their routine. See [`routines`](#routines). An example text line, **trimmed**:
+Result (**shape**): `{"ok":true,"view":"account"|"tracked","sessions":[{"session_id","title","label","state","repo","last_activity","url","tracked","in_account"}],"routines":[…],"hint":null|"…","fallback":null|"…","tracked":[…]}`. The account view reads every page of the account list (20 sessions a page, up to 50 pages or 1000 sessions); it also carries `pages`, `truncated` (a cap was reached), `partial` (a later page failed; the pages before it are shown), `untrusted`, `unofficial`, `routines_error` and `routine_runs_hidden: true`: runs started by a routine are **not** in the sessions list; they are under their routine. See [`routines`](#routines). An example text line, **trimmed**:
 
 ```
   example session  [completed]  your-org/your-repo  2026-11-05T10:30:00Z

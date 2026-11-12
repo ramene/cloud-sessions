@@ -183,3 +183,44 @@ fn an_empty_account_says_how_to_start_a_session() {
     assert_eq!((out["view"].as_str(), out["hint"].as_str()), (Some("account"), Some(HINT_NO_SESSIONS)));
     assert!(HINT_NO_SESSIONS.contains("/cloud-start") && HINT_NO_SESSIONS.contains("claude --cloud"));
 }
+
+fn paged_server(fail_page: Option<u32>) -> (String, Hits) {
+    // Three pages of 2 sessions linked by next_cursor (sent back as ?cursor=); routines on one page with has_more false.
+    mock(move |path| {
+        let page = match path { "/v1/code/sessions" => 1, "/v1/code/sessions?cursor=p2" => 2, "/v1/code/sessions?cursor=p3" => 3, _ => 0 };
+        if path == "/v1/code/triggers" { return (200, json!({"data": [{"id": "trig_a", "name": "A"}], "has_more": false}).to_string()); }
+        if page == 0 { return (200, json!({"data": []}).to_string()); }
+        if Some(page) == fail_page { return (503, r#"{"error":{"message":"page two down"}}"#.into()); }
+        let next = if page < 3 { json!(format!("p{}", page + 1)) } else { json!(null) };
+        (200, json!({"data": [{"id": format!("session_01Page{page}A000000"), "title": format!("p{page} a"), "last_event_at": format!("2026-11-0{page}T10:00:00Z")},
+                              {"id": format!("session_01Page{page}B000000"), "title": format!("p{page} b"), "last_event_at": format!("2026-11-0{page}T09:00:00Z")}],
+                     "next_cursor": next, "resume_token": "rt"}).to_string())
+    })
+}
+
+#[test]
+fn every_page_of_the_account_list_is_read_and_a_later_page_error_keeps_what_was_read() {
+    let home = scratch("pages");
+    allow_login(&home);
+    let (base, hits) = paged_server(None);
+    let out = list(&ctx(&home, &base), &[]);
+    assert_eq!((out["view"].as_str(), out["sessions"].as_array().unwrap().len(), out["pages"].as_u64()), (Some("account"), 6, Some(3)));
+    assert!(out["truncated"].is_null() && out["partial"].is_null() && out["routines_truncated"].is_null());
+    assert_eq!(out["sessions"][0]["session_id"], "session_01Page3A000000", "newest first across pages");
+    assert!(hits.lock().unwrap().iter().any(|p| p == "/v1/code/sessions?cursor=p3"));
+    let raw = list(&ctx(&home, &base), &["--unofficial"]);
+    assert_eq!((raw["remote"]["data"].as_array().unwrap().len(), raw["remote"]["next_cursor"].is_null()), (6, true), "--unofficial carries all pages too");
+    let mcp_input = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "cloud_list", "arguments": {}}}).to_string();
+    let mut output = Vec::new();
+    mcp::serve(&ctx(&home, &base), &mut mcp_input.as_bytes(), &mut output).unwrap();
+    let reply: Value = serde_json::from_slice(&output).unwrap();
+    let inner: Value = serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(inner["sessions"].as_array().unwrap().len(), 6, "MCP cloud_list reads every page");
+
+    let (base, _) = paged_server(Some(2));
+    let out = list(&ctx(&home, &base), &[]);
+    assert_eq!((out["ok"].clone(), out["view"].as_str(), out["sessions"].as_array().unwrap().len()), (json!(true), Some("account"), 2));
+    let partial = out["partial"].as_str().unwrap();
+    assert!(partial.contains("page 2 failed") && partial.contains("page two down") && !partial.contains('\n'), "{partial}");
+    assert!(list_text(&out).contains("! Only the first 1 pages"));
+}

@@ -5,7 +5,7 @@
 //! looked up only by commands that read events. The repository allowlist comes from the user's environment
 //! or config file, never from a flag, so a prompt-injected caller cannot widen it. Event text is untrusted
 //! and every output that carries it says so.
-use cloud_sessions_core::{api::Client, cast, cli, policy};
+use cloud_sessions_core::{api::{Client, PageCaps, Pages}, cast, cli, policy};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Read;
@@ -446,8 +446,8 @@ fn list(ctx: &Ctx, args: &Args) -> Result<Value> {
     if !unofficial && !auth::has_consent(&ctx.home) {
         return Ok(tracked_view(Some(HINT_LOGIN), None));
     }
-    let account = ctx.client().and_then(|c| c.list().map(|body| (c, body)));
-    let (client, body) = match account {
+    let account = ctx.client().and_then(|c| c.list_all(PageCaps::default()).map(|pages| (c, pages)));
+    let (client, pages) = match account {
         Ok(pair) => pair,
         Err(e) if unofficial => return Err(e),
         Err(e) => {
@@ -455,21 +455,33 @@ fn list(ctx: &Ctx, args: &Args) -> Result<Value> {
             return Ok(tracked_view(None, Some(why)));
         }
     };
+    let body = pages_body(&pages);
     let sessions = merge_sessions(&tracked, Some(&body));
     let mut out = json!({"ok": true, "view": "account", "sessions": sessions, "tracked": tracked, "untrusted": UNTRUSTED, "unofficial": LIST_UNOFFICIAL,
-                         "routine_runs_hidden": true, "routine_runs_note": ROUTINE_RUNS_NOTE, "fallback": null});
-    match client.triggers() {
+                         "routine_runs_hidden": true, "routine_runs_note": ROUTINE_RUNS_NOTE, "fallback": null,
+                         "pages": pages.pages, "truncated": pages_note(&pages, "sessions"), "partial": pages.partial});
+    match client.triggers_all(PageCaps::default()) {
         Ok(triggers) => {
-            out["routines"] = json!(triggers["data"].as_array().cloned().unwrap_or_default().iter()
+            out["routines"] = json!(triggers.data.iter()
                 .map(|t| routine_json(t, client.trigger_runs(t["id"].as_str().unwrap_or("")), 3)).collect::<Vec<_>>());
-            out["routines_error"] = Value::Null;
+            out["routines_error"] = triggers.partial.clone().map_or(Value::Null, Value::from);
+            out["routines_truncated"] = json!(pages_note(&triggers, "routines"));
         }
-        Err(e) => { out["routines"] = json!([]); out["routines_error"] = json!(e); }
+        Err(e) => { out["routines"] = json!([]); out["routines_error"] = json!(e); out["routines_truncated"] = Value::Null; }
     }
-    let account_empty = body["data"].as_array().map_or(true, |a| a.is_empty());
+    let account_empty = pages.data.is_empty();
     out["hint"] = if account_empty && sessions.is_empty() { json!(HINT_NO_SESSIONS) } else { Value::Null };
     if unofficial { out["remote"] = body; }
     Ok(out)
+}
+
+/// All pages as one API-shaped body: `{"data":[…],"next_cursor":<cursor of the first page not read, or null>,"pages":n}`.
+pub fn pages_body(pages: &Pages) -> Value {
+    json!({"data": pages.data, "next_cursor": pages.next_cursor, "pages": pages.pages})
+}
+/// One line when a safety cap stopped the paging, else null.
+pub fn pages_note(pages: &Pages, what: &str) -> Option<String> {
+    pages.truncated.then(|| format!("Only the first {} {what} ({} pages) are shown: a safety cap was reached or the API sent no cursor for the rest.", pages.data.len(), pages.pages))
 }
 
 /// The `list` reply as plain text for a person at a terminal (the JSON stays the contract for scripts).
@@ -478,7 +490,9 @@ pub fn list_text(v: &Value) -> String {
     let line = |s: &Value| match s { Value::String(t) if !t.is_empty() => t.clone(), Value::Number(n) if n.as_u64().is_some_and(|x| x > 0) => format!("unix {n}"), _ => "-".to_string() };
     let view = v["view"].as_str().unwrap_or("tracked");
     let sessions = v["sessions"].as_array().cloned().unwrap_or_default();
-    if let Some(f) = v["fallback"].as_str() { out.push_str(&format!("! {f}\n")); }
+    for key in ["fallback", "partial", "truncated"] {
+        if let Some(f) = v[key].as_str() { out.push_str(&format!("! {f}\n")); }
+    }
     out.push_str(&format!("{} ({}):\n", if view == "account" { "Cloud sessions of your account" } else { "Cloud sessions tracked on this computer" }, sessions.len()));
     for s in &sessions {
         out.push_str(&format!("  {}  [{}]  {}  {}\n    {}\n", line(&s["label"]), line(&s["state"]), line(&s["repo"]), line(&s["last_activity"]), line(&s["url"])));
@@ -491,6 +505,7 @@ pub fn list_text(v: &Value) -> String {
             out.push_str(&format!("  {}  [{}{}]  {}\n", line(&r["name"]), sched, if r["enabled"] == true { "" } else { ", off" }, line(&r["url"])));
         }
         if let Some(e) = v["routines_error"].as_str() { out.push_str(&format!("  ! routines could not be read: {e}\n")); }
+        if let Some(t) = v["routines_truncated"].as_str() { out.push_str(&format!("  ! {t}\n")); }
         out.push_str("Titles and names are untrusted remote text.\n");
     }
     if let Some(h) = v["hint"].as_str() { out.push_str(&format!("Next step: {h}\n")); }
@@ -538,10 +553,14 @@ pub fn routine_json(trigger: &Value, runs: std::result::Result<Value, String>, n
 fn routines(ctx: &Ctx, args: &Args) -> Result<Value> {
     let n = args.number("runs", 5)?.clamp(1, 100) as usize;
     let client = ctx.client()?;
-    let body = client.triggers()?;
-    let routines: Vec<Value> = body["data"].as_array().cloned().unwrap_or_default().iter()
+    let pages = client.triggers_all(PageCaps::default())?;
+    let routines: Vec<Value> = pages.data.iter()
         .map(|t| routine_json(t, client.trigger_runs(t["id"].as_str().unwrap_or("")), n)).collect();
-    Ok(json!({"ok": true, "unofficial": ROUTINES_UNOFFICIAL, "routines": routines}))
+    let mut out = json!({"ok": true, "unofficial": ROUTINES_UNOFFICIAL, "routines": routines});
+    // Only when the routines did not fit in one complete page: the contract keys stay as they were otherwise.
+    if let Some(note) = pages_note(&pages, "routines") { out["truncated"] = json!(note); }
+    if let Some(partial) = pages.partial { out["partial"] = json!(partial); }
+    Ok(out)
 }
 
 /// Follow a session: print each new event (via `emit`) until it finishes or `--max-seconds` passes.

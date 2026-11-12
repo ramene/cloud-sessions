@@ -28,6 +28,33 @@ pub struct Page {
     pub finished: bool,
 }
 
+/// Safety caps for following pages.
+#[derive(Clone, Copy, Debug)]
+pub struct PageCaps {
+    pub max_pages: usize,
+    pub max_rows: usize,
+}
+impl Default for PageCaps {
+    fn default() -> Self { Self { max_pages: 50, max_rows: 1000 } }
+}
+/// The rows of all pages read, how many pages, and whether the list is complete.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Pages {
+    pub data: Vec<Value>,
+    pub pages: usize,
+    /// A cap was reached (or the API said there is more but sent no cursor).
+    pub truncated: bool,
+    /// The cursor of the first page not read when a cap was reached.
+    pub next_cursor: Option<String>,
+    /// A later page failed; `data` holds the pages before it.
+    pub partial: Option<String>,
+}
+
+/// Percent-encode a cursor for a query string (unreserved characters stay).
+pub fn query_escape(text: &str) -> String {
+    text.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+}
+
 pub struct Client {
     base: String,
     token: String,
@@ -117,10 +144,45 @@ impl Client {
         self.get_json("/v1/code/sessions")
     }
 
+    /// UNOFFICIAL: every page of `GET /v1/code/sessions`. The API sends 20 rows a page and `next_cursor`; the next
+    /// page is `?cursor=<next_cursor>`. Stops at an empty cursor or at the caps (then `truncated`). An error on page 1
+    /// is the error; an error on a later page keeps the rows read so far and says so in `partial`.
+    pub fn list_all(&self, caps: PageCaps) -> Result<Pages> {
+        self.pages("/v1/code/sessions", None, caps)
+    }
+
+    /// Follow `next_cursor` (`?cursor=`) from `path` until it ends or the caps are reached.
+    fn pages(&self, path: &str, beta: Option<&str>, caps: PageCaps) -> Result<Pages> {
+        let mut out = Pages::default();
+        let mut cursor: Option<String> = None;
+        loop {
+            let url = match &cursor { Some(c) => format!("{path}{}cursor={}", if path.contains('?') { '&' } else { '?' }, query_escape(c)), None => path.to_string() };
+            let body = match self.get_json_beta(&url, beta) {
+                Ok(body) => body,
+                Err(e) if out.pages == 0 => return Err(e),
+                Err(e) => { out.partial = Some(format!("Only the first {} pages ({} rows) could be read; page {} failed: {}", out.pages, out.data.len(), out.pages + 1, e)); return Ok(out); }
+            };
+            out.pages += 1;
+            out.data.extend(body["data"].as_array().cloned().unwrap_or_default());
+            let next = body["next_cursor"].as_str().map(str::trim).filter(|c| !c.is_empty()).map(str::to_string);
+            let more = next.is_some() || body["has_more"] == true;
+            match next {
+                Some(_) if out.pages >= caps.max_pages || out.data.len() >= caps.max_rows => { out.truncated = true; out.next_cursor = next; return Ok(out); }
+                Some(n) if Some(&n) == cursor.as_ref() => { out.partial = Some("The API sent the same cursor twice; stopped there.".into()); return Ok(out); }
+                Some(n) => cursor = Some(n),
+                None => { out.truncated = more; return Ok(out); }
+            }
+        }
+    }
+
     /// UNOFFICIAL (s299): `GET /v1/code/triggers` — the account's routines (scheduled or one-shot jobs), raw JSON.
     /// Routine runs are sessions that the main `list` does NOT include; see `trigger_runs`.
     pub fn triggers(&self) -> Result<Value> {
         self.get_json_beta("/v1/code/triggers", Some(TRIGGERS_BETA))
+    }
+    /// Every page of the routines (the API sends `has_more`; it follows `next_cursor` when one is sent).
+    pub fn triggers_all(&self, caps: PageCaps) -> Result<Pages> {
+        self.pages("/v1/code/triggers", Some(TRIGGERS_BETA), caps)
     }
     /// UNOFFICIAL (s299): `GET /v1/code/sessions?trigger_id=<id>` — the runs of one routine, raw JSON (first page,
     /// same session shape as `list`). The id is validated so nothing but an id reaches the query string.
@@ -236,6 +298,36 @@ mod tests {
         }
         let err = client.events("session_01Other999", None).unwrap_err();
         assert!(err.contains("down") && !err.contains("secret"));
+    }
+
+    fn paged(fail_page: Option<usize>) -> (String, mock::Seen) {
+        // Page n (1-based) has 2 rows; page n points to cursor "c/n+1=" until page 3. The cursor needs escaping.
+        mock::serve(move |path| {
+            let n = match path { "/v1/code/sessions" => 1, p if p.starts_with("/v1/code/sessions?cursor=c%2F") => p.trim_start_matches("/v1/code/sessions?cursor=c%2F").trim_end_matches("%3D").parse().unwrap_or(99), _ => 99 };
+            if Some(n) == fail_page || n == 99 { return (503, r#"{"error":{"message":"page down"}}"#.into()); }
+            let next = if n < 3 { json!(format!("c/{}=", n + 1)) } else { json!(null) };
+            (200, json!({"data": [{"id": format!("session_01P{n}a")}, {"id": format!("session_01P{n}b")}], "next_cursor": next, "resume_token": "r"}).to_string())
+        })
+    }
+
+    #[test]
+    fn list_all_follows_the_cursor_chain_with_caps_and_keeps_pages_before_an_error() {
+        let (base, seen) = paged(None);
+        let client = Client::new(Some(&base), "tok", None).unwrap();
+        let all = client.list_all(PageCaps::default()).unwrap();
+        assert_eq!((all.pages, all.data.len(), all.truncated, all.partial.clone()), (3, 6, false, None));
+        assert_eq!(seen.lock().unwrap().iter().map(|(p, _)| p.clone()).collect::<Vec<_>>(), ["/v1/code/sessions", "/v1/code/sessions?cursor=c%2F2%3D", "/v1/code/sessions?cursor=c%2F3%3D"]);
+        let capped = client.list_all(PageCaps { max_pages: 2, max_rows: 1000 }).unwrap();
+        assert_eq!((capped.pages, capped.data.len(), capped.truncated, capped.next_cursor.as_deref()), (2, 4, true, Some("c/3=")));
+        let rows = client.list_all(PageCaps { max_pages: 50, max_rows: 2 }).unwrap();
+        assert_eq!((rows.pages, rows.truncated), (1, true));
+        let (base, _) = paged(Some(2));
+        let part = Client::new(Some(&base), "tok", None).unwrap().list_all(PageCaps::default()).unwrap();
+        assert_eq!((part.pages, part.data.len(), part.truncated), (1, 2, false));
+        assert!(part.partial.unwrap().contains("page 2 failed") );
+        let (base, _) = paged(Some(1));
+        assert!(Client::new(Some(&base), "tok", None).unwrap().list_all(PageCaps::default()).unwrap_err().contains("page down"), "page 1 failing is the error");
+        assert_eq!(query_escape("a+b/c=d_~"), "a%2Bb%2Fc%3Dd_~");
     }
 
     #[test]
