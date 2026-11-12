@@ -268,6 +268,14 @@ cloud-sessions 自己没有控制室。显示云端会话的控制室在 [remote
 - **通过 `ssh` 时，macOS 的登录钥匙串是锁定的**，因此在 ssh 会话中读取需要 Claude Code 的登录文件（`$CLAUDE_CONFIG_DIR/.credentials.json` 或 `~/.claude/.credentials.json`）或 token 文件。
 - **启动是要花钱的**，与任何云端会话一样，并且每天有上限。
 
+## 安全与信任
+
+cloud-sessions 没有自己的服务器，不会向你索要登录信息，也不会把登录信息发给我们。只有在你于终端中输入 `yes` 同意 `cloud-sessions auth use-claude-login` 之后，程序才会读取 Claude Code 的登录（macOS 钥匙串项 `Claude Code-credentials`，或 `$CLAUDE_CONFIG_DIR/.credentials.json` / `~/.claude/.credentials.json`）。它只把 token 通过 HTTPS 发送到 `api.anthropic.com`，不跟随重定向，也从不打印 token（`auth status` 注明“Values are never shown”）。`github.com` 只用于不带登录信息地下载发布包及其 `.sha256` 文件；`claude.ai` 只是链接，程序不会连接它。
+
+风险：（1）通过 MCP 的提示词注入：`cloud_send` 和 `cloud_start` 让模型可以向云端会话发送文本或启动会话。缓解措施：MCP 服务器默认关闭，不要预先批准这两个工具，仓库允许列表，次数上限，以及“不可信文本”标注。（2）我们的程序运行在你的登录旁边：源码以 MIT 许可公开，发布包附带 SHA-256 校验和。（3）未公开的 API：Anthropic 可以随时更改；你账户的 Anthropic 条款同样适用。（4）本地访问：能读取你钥匙串或登录文件的程序本来就能做同样的事，本工具不增加任何访问权限。详情见英文 README 的“Security and trust”一节。
+
+报告安全问题：<https://github.com/ramene/cloud-sessions/security/advisories/new>
+
 ## 安全模型
 
 - **凭据。** 在 Claude Code 内部，插件不会读取你的任何凭据：启动和发送使用 `claude` CLI 自己的登录，读取则使用内置的 `RemoteTrigger` 工具。程序的独立读取功能在你于终端中明确同意之前一直是关闭的；这项同意无法由脚本、命令行标志或工具调用授予。它保存的任何 token 都在钥匙串或 0600 权限的文件中，从标准输入读取，绝不打印，也绝不放在命令行上。浏览器 cookie 绝不会被读取。
