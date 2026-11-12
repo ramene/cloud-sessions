@@ -316,7 +316,7 @@ Tests make sure that other hosts are refused. The session-link parser refuses `h
 
 1. **Prompt injection through MCP.** `cloud_send` sends text into a cloud session. `cloud_start` starts a cloud session. A model can call these tools. A session can read hostile text, and that text can try to make the model act on a different session. The code does these things to reduce the risk:
    - The MCP server is off until you turn it on. Claude Code asks you before it calls a tool that is not pre-approved. Do not pre-approve `cloud_start` or `cloud_send`.
-   - The two tools have the annotations `readOnlyHint: false` and `openWorldHint: true`. Their descriptions tell the model to ask you first and to send only what you asked for.
+   - The two tools have the annotations `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false` and `openWorldHint: true` (every tool sets all four hints). Their descriptions tell the model to ask you first and to send only what you asked for.
    - The commands `/cloud-start`, `/cloud-send`, `/cloud-allow` and `/cloud-stop` have `disable-model-invocation: true`. Only you can type them.
    - `start` works only for a repository on your allowlist. The allowlist comes from your environment or your config file. No flag and no tool argument can add to it.
    - Limits: 5 starts a day by default; one send every 2 seconds; 60 sends an hour for each session.
