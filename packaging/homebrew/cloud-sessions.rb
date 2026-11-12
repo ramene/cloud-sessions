@@ -8,7 +8,7 @@ class CloudSessions < Formula
   desc "Start, read, watch and send into Claude Code cloud sessions (CLI, MCP server, plugin)"
   homepage "https://github.com/ramene/cloud-sessions"
   license "MIT"
-  version "0.2.2"
+  version "0.2.3"
 
   base = "https://github.com/ramene/cloud-sessions/releases/download/cloud-sessions-v#{version}"
 

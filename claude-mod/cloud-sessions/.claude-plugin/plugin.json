@@ -1,6 +1,6 @@
 {
   "name": "cloud-sessions",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Start, list, read, watch and send into Claude Code cloud sessions from any Claude Code session, using the cloud-sessions CLI (and an optional MCP server).",
   "license": "MIT",
   "author": {

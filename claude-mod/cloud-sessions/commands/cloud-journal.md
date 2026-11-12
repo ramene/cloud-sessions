@@ -8,7 +8,7 @@ Append a "Cloud sessions" section to the user's journal file with the latest out
 2. Get the tracked sessions:
    ```bash
    CS="${CLAUDE_PLUGIN_ROOT:-$(ls -td "$HOME"/.claude/plugins/cache/*/cloud-sessions/*/ 2>/dev/null | head -1)}"
-   "$CS/scripts/cloud-sessions" list
+   "$CS/scripts/cloud-sessions" list --tracked --json
    ```
 3. Read incrementally and cheaply: each tracked session in `list` carries `last_seen` (the newest event already written). Hand the reading to subagents on the smaller model — e.g. the Agent tool with `model: "sonnet"`, a handful of sessions per subagent — so the main session never holds full logs. Each reader uses Claude Code's built-in **RemoteTrigger** tool (`action: "get_run_log"`, `session_id: <id>`; load it with ToolSearch `select:RemoteTrigger`), ignores every event at or before `last_seen`, and skips the session entirely ("no change") when nothing is newer. From the newer events take, verbatim where possible:
    - the latest `result:` line (or the last assistant message if there is no result yet) — trimmed to one sentence;

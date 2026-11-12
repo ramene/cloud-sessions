@@ -73,7 +73,7 @@ pub fn parse_args(args: &[String]) -> Result<Args> {
     while let Some(arg) = iter.next() {
         if let Some(name) = arg.strip_prefix("--") {
             if VALUE_FLAGS.contains(&name) { parsed.values.insert(name.into(), iter.next().ok_or(format!("--{name} needs a value."))?.clone()); }
-            else if ["unofficial", "stream", "raw", "all-tracked", "no-endcard"].contains(&name) { parsed.switches.push(name.into()); }
+            else if ["unofficial", "tracked", "json", "stream", "raw", "all-tracked", "no-endcard"].contains(&name) { parsed.switches.push(name.into()); }
             else { return Err(format!("Unknown option --{name}.")); }
         } else { parsed.positional.push(arg.clone()); }
     }
@@ -368,18 +368,133 @@ fn events_clean(text: &str) -> String {
     cloud_sessions_core::events::one_line(text, 120)
 }
 
+pub const HINT_LOGIN: &str = "To see the sessions and routines of your account here, allow the Claude Code login once in a terminal: cloud-sessions auth use-claude-login (asks for a typed yes). Until then this list shows only the sessions tracked on this computer.";
+pub const HINT_NO_SESSIONS: &str = "Your account has no cloud sessions yet. Start one: in Claude Code type /cloud-start (or run `claude --cloud` in a repository checkout, or open https://claude.ai/code). Track a session started elsewhere with /cloud-track <link>.";
+pub const HINT_NO_TRACKED: &str = "No session is tracked on this computer. Start one with /cloud-start, or track one started elsewhere with /cloud-track <link>.";
+pub const LIST_UNOFFICIAL: &str = "GET /v1/code/sessions and GET /v1/code/triggers are not documented by Anthropic and may change.";
+
+/// A short form of a session id for display: `session_` plus the first 10 characters of the id.
+pub fn short_id(id: &str) -> String {
+    let rest = id.strip_prefix("session_").or_else(|| id.strip_prefix("cse_")).unwrap_or(id);
+    format!("session_{}", rest.chars().take(10).collect::<String>())
+}
+fn non_empty(v: &Value) -> Option<String> {
+    v.as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
+}
+/// The repository of an account session: the first `config.outcomes[].git_info.repo`.
+pub fn account_repo(item: &Value) -> Option<String> {
+    item.pointer("/config/outcomes").and_then(Value::as_array)
+        .and_then(|o| o.iter().find_map(|x| x.pointer("/git_info/repo").and_then(non_empty)))
+}
+/// One row of the `sessions` list. `label` is the title, or the short id when there is no title.
+fn session_row(id: &str, title: Option<String>, state: Option<String>, repo: Option<String>, last_activity: Value, tracked: bool, in_account: bool) -> Value {
+    let title = title.map(|t| events_clean(&t)).filter(|t| !t.is_empty());
+    let label = title.clone().unwrap_or_else(|| short_id(id));
+    json!({"session_id": id, "title": title, "label": label, "state": state, "repo": repo, "last_activity": last_activity,
+           "url": policy::session_url(id), "tracked": tracked, "in_account": in_account})
+}
+/// Account sessions first (newest activity first), each once; a tracked session in the account list keeps the account
+/// title (or its own when the account has none). Tracked-only sessions follow.
+pub fn merge_sessions(tracked: &Value, account: Option<&Value>) -> Vec<Value> {
+    let tracked: Vec<Value> = tracked.as_array().cloned().unwrap_or_default();
+    let tracked_title = |id: &str| tracked.iter().find(|t| t["session_id"] == id).and_then(|t| non_empty(&t["title"]));
+    let mut rows: Vec<Value> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    if let Some(account) = account {
+        let mut items: Vec<Value> = account["data"].as_array().cloned().unwrap_or_default();
+        let at = |v: &Value| non_empty(&v["last_event_at"]).or_else(|| non_empty(&v["updated_at"])).or_else(|| non_empty(&v["created_at"])).unwrap_or_default();
+        items.sort_by_key(|v| std::cmp::Reverse(at(v)));
+        for item in &items {
+            let Some(id) = item["id"].as_str().and_then(|i| policy::parse_session_id(i).ok()) else { continue };
+            if seen.contains(&id) { continue; }
+            let is_tracked = tracked.iter().any(|t| t["session_id"] == id.as_str());
+            let title = non_empty(&item["title"]).or_else(|| tracked_title(&id));
+            let state = non_empty(&item["status"]).or_else(|| non_empty(&item["worker_status"]));
+            let repo = account_repo(item).or_else(|| tracked.iter().find(|t| t["session_id"] == id.as_str()).and_then(|t| non_empty(&t["repo"])));
+            let last = non_empty(&item["last_event_at"]).or_else(|| non_empty(&item["updated_at"])).or_else(|| non_empty(&item["created_at"]));
+            rows.push(session_row(&id, title, state, repo, json!(last), is_tracked, true));
+            seen.push(id);
+        }
+    }
+    for t in &tracked {
+        let Some(id) = t["session_id"].as_str() else { continue };
+        if seen.iter().any(|s| s == id) { continue; }
+        let last = t["last_seen"].clone();
+        let last = if last.is_null() { t["started_at"].clone() } else { last };
+        rows.push(session_row(id, non_empty(&t["title"]), None, non_empty(&t["repo"]), last, true, false));
+        seen.push(id.to_string());
+    }
+    rows
+}
+
+/// `list`: with the Claude login allowed, the account's sessions and routines (tracked ones merged in, each once);
+/// `--tracked` (or no login) shows only the sessions tracked here. `--unofficial` forces the account view with any
+/// token source and also returns the raw API body as `remote`. Every state carries a `hint` (null when none is needed).
 fn list(ctx: &Ctx, args: &Args) -> Result<Value> {
     let st = state::load(&ctx.home);
-    let mut out = json!({"ok": true, "tracked": st.sessions_json()});
-    if args.switch("unofficial") {
-        out["remote"] = ctx.client()?.list()?;
-        out["untrusted"] = json!(UNTRUSTED);
-        out["unofficial"] = json!("GET /v1/code/sessions is not documented by Anthropic and may change.");
-        // Runs started by a routine are absent from this list.
-        out["routine_runs_hidden"] = json!(true);
-        out["routine_runs_note"] = json!(ROUTINE_RUNS_NOTE);
+    let tracked = st.sessions_json();
+    let tracked_view = |hint: Option<&str>, fallback: Option<String>| {
+        let sessions = merge_sessions(&tracked, None);
+        let hint = hint.map(str::to_string).or_else(|| sessions.is_empty().then(|| HINT_NO_TRACKED.to_string()));
+        json!({"ok": true, "view": "tracked", "sessions": sessions, "tracked": tracked, "routines": [], "hint": hint, "fallback": fallback})
+    };
+    if args.switch("tracked") {
+        let hint = (!auth::has_consent(&ctx.home) && tracked.as_array().map_or(true, |a| a.is_empty())).then_some(HINT_LOGIN);
+        return Ok(tracked_view(hint, None));
     }
+    let unofficial = args.switch("unofficial");
+    if !unofficial && !auth::has_consent(&ctx.home) {
+        return Ok(tracked_view(Some(HINT_LOGIN), None));
+    }
+    let account = ctx.client().and_then(|c| c.list().map(|body| (c, body)));
+    let (client, body) = match account {
+        Ok(pair) => pair,
+        Err(e) if unofficial => return Err(e),
+        Err(e) => {
+            let why = format!("Showing only the sessions tracked on this computer: the account list could not be read ({}). Fix: sign in again with `claude` (then /login), check the connection, and run `cloud-sessions list` again; `cloud-sessions auth status` shows what is allowed.", e.trim_end_matches('.'));
+            return Ok(tracked_view(None, Some(why)));
+        }
+    };
+    let sessions = merge_sessions(&tracked, Some(&body));
+    let mut out = json!({"ok": true, "view": "account", "sessions": sessions, "tracked": tracked, "untrusted": UNTRUSTED, "unofficial": LIST_UNOFFICIAL,
+                         "routine_runs_hidden": true, "routine_runs_note": ROUTINE_RUNS_NOTE, "fallback": null});
+    match client.triggers() {
+        Ok(triggers) => {
+            out["routines"] = json!(triggers["data"].as_array().cloned().unwrap_or_default().iter()
+                .map(|t| routine_json(t, client.trigger_runs(t["id"].as_str().unwrap_or("")), 3)).collect::<Vec<_>>());
+            out["routines_error"] = Value::Null;
+        }
+        Err(e) => { out["routines"] = json!([]); out["routines_error"] = json!(e); }
+    }
+    let account_empty = body["data"].as_array().map_or(true, |a| a.is_empty());
+    out["hint"] = if account_empty && sessions.is_empty() { json!(HINT_NO_SESSIONS) } else { Value::Null };
+    if unofficial { out["remote"] = body; }
     Ok(out)
+}
+
+/// The `list` reply as plain text for a person at a terminal (the JSON stays the contract for scripts).
+pub fn list_text(v: &Value) -> String {
+    let mut out = String::new();
+    let line = |s: &Value| match s { Value::String(t) if !t.is_empty() => t.clone(), Value::Number(n) if n.as_u64().is_some_and(|x| x > 0) => format!("unix {n}"), _ => "-".to_string() };
+    let view = v["view"].as_str().unwrap_or("tracked");
+    let sessions = v["sessions"].as_array().cloned().unwrap_or_default();
+    if let Some(f) = v["fallback"].as_str() { out.push_str(&format!("! {f}\n")); }
+    out.push_str(&format!("{} ({}):\n", if view == "account" { "Cloud sessions of your account" } else { "Cloud sessions tracked on this computer" }, sessions.len()));
+    for s in &sessions {
+        out.push_str(&format!("  {}  [{}]  {}  {}\n    {}\n", line(&s["label"]), line(&s["state"]), line(&s["repo"]), line(&s["last_activity"]), line(&s["url"])));
+    }
+    if view == "account" {
+        let routines = v["routines"].as_array().cloned().unwrap_or_default();
+        out.push_str(&format!("Routines ({}):\n", routines.len()));
+        for r in &routines {
+            let sched = r["schedule"]["cron"].as_str().map(|c| format!("cron {c}")).unwrap_or_else(|| "once".into());
+            out.push_str(&format!("  {}  [{}{}]  {}\n", line(&r["name"]), sched, if r["enabled"] == true { "" } else { ", off" }, line(&r["url"])));
+        }
+        if let Some(e) = v["routines_error"].as_str() { out.push_str(&format!("  ! routines could not be read: {e}\n")); }
+        out.push_str("Titles and names are untrusted remote text.\n");
+    }
+    if let Some(h) = v["hint"].as_str() { out.push_str(&format!("Next step: {h}\n")); }
+    out
 }
 
 pub const ROUTINE_RUNS_NOTE: &str = "Runs started by a routine are not in this list; they live under their routine. See `cloud-sessions routines`.";

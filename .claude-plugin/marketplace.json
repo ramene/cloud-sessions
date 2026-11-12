@@ -6,7 +6,7 @@
     {
       "name": "cloud-sessions",
       "source": "./claude-mod/cloud-sessions",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "description": "Start, list, read, watch and send into Claude Code cloud sessions from any Claude Code session.",
       "author": { "name": "the cloud-sessions contributors" },
       "homepage": "https://github.com/ramene/cloud-sessions/blob/main/claude-mod/cloud-sessions/README.md",

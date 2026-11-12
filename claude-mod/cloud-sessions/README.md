@@ -23,7 +23,7 @@ That is all. Open the repository you want to work on and use the commands below.
 | `/cloud-allow` | Allow cloud sessions for the current repository (once per repo) | the optional program¹ |
 | `/cloud-start <prompt>` | Start a cloud session for the current repo (costs cloud usage) | the optional program¹ (it needs a terminal that Claude Code's shell lacks) |
 | `/cloud-track <link\|id> [--title t] \| --from-file <path>` | Track sessions started elsewhere (every claude.ai link in a file, deduplicated) | the optional program¹ |
-| `/cloud-list` | Tracked sessions with title and link | the optional program¹ |
+| `/cloud-list` | Your account's sessions and routines (after `cloud-sessions auth use-claude-login`), else the tracked ones; each empty state says what to do | the optional program¹ |
 
 ¹ **The optional program** is a small prebuilt `cloud-sessions` binary (about 4 MB, MIT licensed, built from `crates/` in this
 repository). The plugin's launcher (`scripts/cloud-sessions`) gets it **by itself the first time** one of those commands runs:

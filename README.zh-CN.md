@@ -50,7 +50,7 @@ cloud-sessions allow --dir ~/code/my-repo        # or /cloud-allow in Claude Cod
 | --- | --- | --- |
 | `start`、`send` | 已登录的 `claude` | `claude` CLI 自己的登录；本程序从不接触它 |
 | `/cloud-read`、`/cloud-watch`（在 Claude Code 内部） | 无需额外条件 | Claude Code 内置的 `RemoteTrigger` 工具（`get_run_log`） |
-| `events`、`watch`、`cast`、`collect`、`list --unofficial`、`routines`（独立程序） | 一个能够读取会话的 token | 见下文 |
+| `events`、`watch`、`cast`、`collect`、`list`（账号视图）、`routines`（独立程序） | 一个能够读取会话的 token | 见下文 |
 | `collect`（从 GitHub 获取文件） | `gh`，配合 `GH_TOKEN` 或 `gh auth login` | `gh`；本程序不处理任何 GitHub token |
 
 **由 `claude setup-token` 生成的 token 不能读取会话。** 它仅用于推理；events 端点会返回 HTTP 401（"OAuth token lacks a scope this endpoint accepts"）。因此独立读取使用的是 Claude Code 自己的登录凭据，且需要你在终端中事先明确同意一次：
@@ -129,17 +129,17 @@ cloud-sessions untrack session_01ExampleAAAAAAAAAAAAAAA     # local list only; t
 ### list
 
 ```bash
-cloud-sessions list                  # the sessions this machine started or tracks
-cloud-sessions list --unofficial     # also the account's sessions (undocumented endpoint)
+cloud-sessions list                  # your account's sessions and routines (after auth use-claude-login), else the tracked ones
+cloud-sessions list --tracked        # only the sessions this computer started or tracks; no request to the API
+cloud-sessions list --json           # JSON at a terminal too (scripts and pipes always get JSON)
+cloud-sessions list --unofficial     # the account view plus the raw API body
 ```
 
-不带 `--unofficial` 时，结果为 `{"ok":true,"tracked":[…]}`。下面是一个已跟踪条目的示例，**已精简**为实际打印的字段：
+**默认视图。** 当你允许使用 Claude Code 登录（`cloud-sessions auth use-claude-login`）后，`list` 显示你账号的会话（按最近活动排序）：标题、状态、仓库、最近活动和链接；随后是账号的 routines 及其最新运行。已跟踪且也在账号列表中的会话只显示一次（带标题）；没有标题的已跟踪会话显示其短 id。
 
-```
-session_01ExampleAAAAAAAAAAAAAAA · example session
-```
+**首次运行。** 每种状态都会在 `hint` 字段和文本输出中说明下一步：未允许登录时提示 `cloud-sessions auth use-claude-login (asks for a typed yes)`；没有会话时说明如何启动（`/cloud-start`、`claude --cloud`）或跟踪（`/cloud-track`）；账号列表读取失败时显示已跟踪的会话，并用一行 `fallback` 说明原因和修复方法。
 
-带 `--unofficial` 时，结果还会包含 `remote`（原始 API 响应体，不可信）、`unofficial`，以及 `routine_runs_hidden: true`：由 routine 启动的运行**不会**出现在此列表中（账号的主列表本来就不显示其 routine 运行）。请使用 [`routines`](#routines)。
+结果（**结构**）：`{"ok":true,"view":"account"|"tracked","sessions":[…],"routines":[…],"hint":null|"…","fallback":null|"…","tracked":[…]}`。由 routine 启动的运行**不会**出现在 sessions 中，请使用 [`routines`](#routines)。
 
 ### events（插件：/cloud-read）
 
@@ -261,7 +261,7 @@ cloud-sessions 自己没有控制室。显示云端会话的控制室在 [remote
 - **云端会话是轮询的，而不是流式的。** `watch` 每隔 `--interval` 秒调用一次 events API，显示的是完整的消息，没有逐 token 的输出。`--stream` 使用未文档化的端点，并会回退为轮询。逐 token 的流式输出只适用于你自己运行的 Claude（一个长期运行的 `claude -p --input-format stream-json --output-format stream-json --include-partial-messages`）；这不是本 mod 的功能，云端会话也无法使用。
 - **无法从外部给出批准。** 通过 `send` 发出的消息是对等消息：它可以引导，但不能批准权限提示。包含批准在内的完整控制，只适用于你在自己掌控的虚拟机中运行的 Claude。
 - **`stop` 会结束 Remote Control 会话**（worker 退出，会话被归档；取消归档之前，后续的 send 都会被拒绝）。它只能在 worker 所在的机器上起作用。**云端**会话没有本地 worker；只有其页面上的 Stop 按钮能中断它，而排队的消息只在步骤之间被读取，所以无法中止一个长时间运行的命令。
-- **未文档化的端点。** `list --unofficial`、`watch --stream` 和 `routines` 使用 Anthropic 尚未文档化的端点；它们可能在没有通知的情况下变化或消失。`routines` 需要请求头 `anthropic-beta: ccr-triggers-2026-01-30`（由客户端添加）。
+- **未文档化的端点。** `list`（账号视图）、`watch --stream` 和 `routines` 使用 Anthropic 尚未文档化的端点；它们可能在没有通知的情况下变化或消失。`routines` 需要请求头 `anthropic-beta: ccr-triggers-2026-01-30`（由客户端添加）。
 - **Routine 的运行不在主会话列表中。** 请使用 `routines`。运行 id 可用于 `events`、`watch`、`cast` 和 `collect`。
 - **由 `claude setup-token` 生成的 token 不能读取会话**（HTTP 401）。独立读取需要事先同意的 `auth use-claude-login`，或一个具有相应权限范围的 token。
 - **事件文本不可信。** 它来自远端的运行，而该运行可能读取过恶意内容。程序会去除控制字符和双向（bidi）字符、限制文本长度，并为每一项输出加上标注；请把它当作需要报告的数据，绝不能当作指令。

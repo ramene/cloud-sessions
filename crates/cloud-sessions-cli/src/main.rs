@@ -1,5 +1,5 @@
 //! `cloud-sessions start|send|events|watch|list|routines|auth|mcp`. JSON on stdout; failures `{"ok":false,"error":…}` with exit 1.
-use cloud_sessions_cli::{auth::auth, ctx_from_env, mcp, run, watch};
+use cloud_sessions_cli::{auth::auth, ctx_from_env, list_text, mcp, run, watch};
 use serde_json::{json, Value};
 use std::io::{stdin, stdout, IsTerminal, Write};
 
@@ -16,7 +16,9 @@ const USAGE: &str = "usage: cloud-sessions <command>
   stop   <session>                                     interrupt a Remote Control session running on this machine
   mark   <session> --seen <utc>                         remember the newest event a journal already wrote
   untrack <session>                                     stop tracking one
-  list   [--unofficial]                                 sessions started here (+ the account's, unofficial; routine runs are not in it)
+  list   [--tracked] [--json]                           the account's sessions and routines (after auth use-claude-login),
+                                                        else the sessions tracked here, with a hint for the next step;
+                                                        --tracked: only the tracked ones; text at a terminal, --json for JSON
   routines [--runs N] [--unofficial]                    the account's routines with their newest N runs each (unofficial)
   auth   set [--file]|clear|status|use-claude-login|revoke-claude-login   manage how events are read (set reads stdin)
   mcp                                                   run as an MCP server over stdio";
@@ -46,7 +48,12 @@ fn main() {
         other => run(&ctx, other, rest, &mut stdin().lock()),
     };
     match outcome {
-        Ok(value) => { print(&value); if value["ok"] == false { std::process::exit(1); } }
+        Ok(value) => {
+            // `list` at a terminal prints text for a person; scripts, pipes and --json get the JSON.
+            if command == "list" && value["ok"] == true && stdout().is_terminal() && !rest.iter().any(|a| a == "--json") { print!("{}", list_text(&value)); return; }
+            print(&value);
+            if value["ok"] == false { std::process::exit(1); }
+        }
         Err(error) => fail(&error),
     }
 }

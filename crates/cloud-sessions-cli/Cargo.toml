@@ -1,6 +1,6 @@
 [package]
 name = "cloud-sessions-cli"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 description = "cloud-sessions: start, send, events, watch and list for Claude Code cloud sessions (JSON output), plus an MCP server."
 license = "MIT"
@@ -15,7 +15,7 @@ name = "cloud-sessions"
 path = "src/main.rs"
 
 [dependencies]
-cloud-sessions-core = { path = "../cloud-sessions-core", version = "0.2.2" }
+cloud-sessions-core = { path = "../cloud-sessions-core", version = "0.2.3" }
 serde_json = "1"
 
 # The system keychain on macOS and Windows only. On Linux a Secret Service client would link libdbus at runtime,

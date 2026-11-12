@@ -3,6 +3,18 @@
 The Cloud sessions mod (`cloud-sessions-core`, the `cloud-sessions` CLI and the Claude Code plugin) is versioned
 together and released on tags named `cloud-sessions-vX.Y.Z`.
 
+## 0.2.3
+
+Fixes #1: `list` showed only the sessions tracked on this computer, and an empty first run gave no guidance.
+
+- `list` (and `/cloud-list`, MCP `cloud_list`) now shows the sessions of your account by default when you allowed the Claude Code login (`cloud-sessions auth use-claude-login`): title, state, repository, last activity and link, newest first. The routines of the account, with their newest runs, are a second section (`routines`).
+- `list --tracked` keeps the old view: only the sessions tracked on this computer, with no request to the API. `list --unofficial` stays accepted: the account view plus the raw API body (`remote`); it still fails when the account list fails.
+- Each state says what to do next, in a `hint` field and in the text output. Login not allowed: "cloud-sessions auth use-claude-login (asks for a typed yes)". No sessions: how to start one (`/cloud-start`, `claude --cloud`) or track one (`/cloud-track`).
+- When the account list cannot be read, `list` shows the tracked sessions and one `fallback` line with the reason and the fix. A routines failure is `routines_error`; it does not fail the list.
+- A tracked session that is also in the account list shows once, with its title. A tracked session without a title shows its short id (`session_` plus 10 characters), never "(untitled)".
+- At a terminal, `list` prints text for a person; scripts, pipes and `--json` get JSON. The JSON keeps `tracked` (and `remote` with `--unofficial`) for existing callers, and adds `view`, `sessions`, `routines`, `hint` and `fallback`.
+- No change to the login guarantees: without the opt-in, `list` reads no token and makes no request. The token goes only to `https://api.anthropic.com` (or a loopback test server). `/cloud-start`, `/cloud-send`, `/cloud-allow` and `/cloud-stop` stay user-only (`disable-model-invocation`).
+
 ## 0.2.2
 
 - Fix (login): reading with Claude Code's login now honours `CLAUDE_CONFIG_DIR`. The login file is `$CLAUDE_CONFIG_DIR/.credentials.json` when that is set (and not empty), else `~/.claude/.credentials.json`.

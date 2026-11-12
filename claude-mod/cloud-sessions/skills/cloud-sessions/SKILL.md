@@ -14,7 +14,7 @@ Nothing has to be installed first. **Reading** uses Claude Code's own built-in *
 | Send | `claude -p "$msg" --cloud <id> --output-format json` (message in a quoted heredoc variable) | More cloud work, billed. Report the JSON result; never send twice. |
 | Read | **RemoteTrigger** with `action: "get_run_log"`, `session_id: <id>` | Returns the newest page of events; pass the returned cursor to page backward. Needs no extra setup. Do not use `cloud-sessions events` or `cloud_events`: a `claude setup-token` token is inference-only and cannot read sessions (HTTP 401). |
 | Watch | RemoteTrigger `get_run_log` every ~10 s, reporting only new events, until the log ends with a result or a time limit | `/cloud-watch` does this. |
-| Track / list | `"$CS/scripts/cloud-sessions" track <link or id> [--title t]` or `track --from-file <path>`; `list` | Optional: keeps a local list of sessions (also those started elsewhere); `list` shows titles and links. Changes nothing remote. |
+| Track / list | `"$CS/scripts/cloud-sessions" track <link or id> [--title t]` or `track --from-file <path>`; `list` | Optional: keeps a local list of sessions (also those started elsewhere). `list` shows the account's sessions and routines after the user allowed the login (`cloud-sessions auth use-claude-login`, the user types yes at a terminal; never run it for them), else the tracked ones; `--tracked` = only the tracked ones. Show its `hint` and `fallback` lines as is. Changes nothing remote. |
 
 Attaching interactively to an existing session is not available; do not try `claude --cloud <id>` without `-p`.
 

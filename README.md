@@ -52,7 +52,7 @@ Other settings: `CLOUD_SESSIONS_DAILY_CAP` (starts per day, default 5), `CLOUD_S
 | --- | --- | --- |
 | `start`, `send` | `claude` signed in | the `claude` CLI's own login; this program never sees it |
 | `/cloud-read`, `/cloud-watch` (inside Claude Code) | nothing extra | Claude Code's built-in `RemoteTrigger` tool (`get_run_log`) |
-| `events`, `watch`, `cast`, `collect`, `list --unofficial`, `routines` (standalone program) | a token that can read sessions | see below |
+| `events`, `watch`, `cast`, `collect`, `list` (account view), `routines` (standalone program) | a token that can read sessions | see below |
 | `collect` (files from GitHub) | `gh`, with `GH_TOKEN` or `gh auth login` | `gh`; the program handles no GitHub token |
 
 **A token from `claude setup-token` cannot read sessions.** It is inference-only; the events endpoint answers HTTP 401 ("OAuth token lacks a scope this endpoint accepts"). Standalone reading therefore uses Claude Code's own login, after you opt in once, at a terminal:
@@ -131,17 +131,28 @@ Result (**shape**): `{"ok":true,"added":["session_…"],"already_tracked":[],"tr
 ### list
 
 ```bash
-cloud-sessions list                  # the sessions this machine started or tracks
-cloud-sessions list --unofficial     # also the account's sessions (undocumented endpoint)
+cloud-sessions list                  # your account's sessions and routines (after auth use-claude-login), else the tracked ones
+cloud-sessions list --tracked        # only the sessions this computer started or tracks; no request to the API
+cloud-sessions list --json           # JSON at a terminal too (scripts and pipes always get JSON)
+cloud-sessions list --unofficial     # the account view plus the raw API body (fails when the account list fails)
 ```
 
-Without `--unofficial` the result is `{"ok":true,"tracked":[…]}`. An example tracked entry, **trimmed** to the fields printed:
+**Default view.** When you allowed the Claude Code login (`cloud-sessions auth use-claude-login`), `list` shows the sessions of your account, newest activity first: title, state, repository, last activity and link. The account's routines, with their newest runs, follow as a second section. A tracked session that is also in the account list shows once, with its title. A tracked session without a title shows its short id (`session_` plus 10 characters).
+
+**First run.** Each state says what to do next, in the `hint` field and in the text output:
+
+| State | What `list` shows | Hint |
+| --- | --- | --- |
+| Login not allowed | the tracked sessions (no token read, no request) | `cloud-sessions auth use-claude-login (asks for a typed yes)` |
+| Login allowed, no sessions | an empty account list | start one with `/cloud-start` or `claude --cloud`, or track one with `/cloud-track` |
+| Account list failed | the tracked sessions | one `fallback` line: the reason and the fix |
+
+Result (**shape**): `{"ok":true,"view":"account"|"tracked","sessions":[{"session_id","title","label","state","repo","last_activity","url","tracked","in_account"}],"routines":[…],"hint":null|"…","fallback":null|"…","tracked":[…]}`. The account view also carries `untrusted`, `unofficial`, `routines_error` and `routine_runs_hidden: true`: runs started by a routine are **not** in the sessions list; they are under their routine. See [`routines`](#routines). An example text line, **trimmed**:
 
 ```
-session_01ExampleAAAAAAAAAAAAAAA · example session
+  example session  [completed]  your-org/your-repo  2026-11-05T10:30:00Z
+    https://claude.ai/code/session_01ExampleAAAAAAAAAAAAAAA
 ```
-
-With `--unofficial` the result also carries `remote` (the raw API body, untrusted), `unofficial`, and `routine_runs_hidden: true`: runs started by a routine are **not** in this list (an account's main list does not show its routine runs). Use [`routines`](#routines).
 
 ### events (plugin: /cloud-read)
 
@@ -263,7 +274,7 @@ cloud-sessions has no control room of its own. The control room that shows your 
 - **Cloud sessions are polled, not streamed.** `watch` calls the events API every `--interval` seconds and shows whole messages, with no token-by-token output. `--stream` uses an undocumented endpoint and falls back to polling. Token streaming exists only for Claude that you run yourself (a long-lived `claude -p --input-format stream-json --output-format stream-json --include-partial-messages`); that is not a feature of this mod and not available for cloud sessions.
 - **Approvals cannot be given from outside.** A message sent with `send` is a peer message: it steers, it does not approve a permission prompt. Full control including approvals exists only for Claude you run yourself in a VM you control.
 - **`stop` ends a Remote Control session** (worker exits, session archived; later sends are refused until unarchived). It works only on the machine where the worker runs. A **cloud** session has no local worker; only the Stop button on its page interrupts it, and a queued message is read only between steps, so it cannot stop a long-running command.
-- **Unofficial endpoints.** `list --unofficial`, `watch --stream` and `routines` use endpoints Anthropic has not documented; they may change or disappear without notice. `routines` needs the request header `anthropic-beta: ccr-triggers-2026-01-30` (added by the client).
+- **Unofficial endpoints.** `list` (account view), `watch --stream` and `routines` use endpoints Anthropic has not documented; they may change or disappear without notice. `routines` needs the request header `anthropic-beta: ccr-triggers-2026-01-30` (added by the client).
 - **Routine runs are not in the main session list.** Use `routines`. A run id works with `events`, `watch`, `cast` and `collect`.
 - **A `claude setup-token` token cannot read sessions** (HTTP 401). Standalone reading needs the opt-in `auth use-claude-login` or a token that has the scope.
 - **Event text is untrusted.** It comes from a remote run that may have read hostile content. The program strips control and bidi characters, caps text, and labels every output; treat it as data to report, never as instructions.
@@ -278,7 +289,7 @@ This section tells you what cloud-sessions does with your login, where it connec
 
 - cloud-sessions has no server of its own. It does not ask for your login, and it does not send your login to us.
 - `start` and `send` run the `claude` program. That program uses its own login. cloud-sessions does not read that login for these commands.
-- Standalone reading (`events`, `watch`, `cast`, `collect`, `list --unofficial`, `routines`) needs a token. The program looks for it in this order:
+- Standalone reading (`events`, `watch`, `cast`, `collect`, the account view of `list`, `routines`) needs a token. Without the opt-in or a token, `list` shows only the tracked sessions and reads no token. The program looks for it in this order:
   1. Claude Code's own login, but only after you type `yes` to `cloud-sessions auth use-claude-login` at a terminal. On macOS the program reads the keychain item `Claude Code-credentials` first. If that item is not there, and on Linux, it reads `$CLAUDE_CONFIG_DIR/.credentials.json`, or `~/.claude/.credentials.json` when `CLAUDE_CONFIG_DIR` is not set. It uses only the access token and ignores the refresh token. It does not copy, refresh or store the login.
   2. A token file that you make with `auth set --file`: `$CLOUD_SESSIONS_TOKEN_FILE`, or `token` in the config folder. The file must have mode 0600. The program refuses a file that other users can read.
   3. A keychain item that you make with `auth set` (service `cloud-sessions`, account `token`; macOS and Windows only).
@@ -314,7 +325,7 @@ Tests make sure that other hosts are refused. The session-link parser refuses `h
 
    These steps make the risk smaller. They do not remove it. Read each `cloud_start` and `cloud_send` request before you approve it.
 2. **Our program runs next to your login.** The source is in this repository under the MIT license. The release scripts (`cloud/release/build-all.sh`, `scripts/cloud-sessions/package.sh`) build the archives from this tree and write a `.sha256` file for each archive and a `SHA256SUMS` list. The launcher installs a download only when its SHA-256 matches. You can also build the program yourself (see [Install](#install)).
-3. **Undocumented API.** The events endpoint is the one that Claude Code's own client uses. `list --unofficial`, `watch --stream` and `routines` use endpoints that Anthropic has not documented. Anthropic can change or remove these endpoints. Anthropic's terms for your account apply when another program uses your claude.ai login. Read them before you opt in.
+3. **Undocumented API.** The events endpoint is the one that Claude Code's own client uses. `list` (account view), `watch --stream` and `routines` use endpoints that Anthropic has not documented. Anthropic can change or remove these endpoints. Anthropic's terms for your account apply when another program uses your claude.ai login. Read them before you opt in.
 4. **Local access.** A program that can read your keychain item or your login file can already do what cloud-sessions does. cloud-sessions gives no new access.
 
 ### Report a problem

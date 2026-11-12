@@ -47,7 +47,7 @@ claude plugin list
 
 - **Start and send** use the login of the `claude` CLI. Sign in to Claude Code once. cloud-sessions never sees that login.
 - **`/cloud-read` and `/cloud-watch`** inside Claude Code use Claude Code's built-in `RemoteTrigger` tool. They need nothing extra.
-- **The standalone program** (`events`, `watch`, `cast`, `collect`, `list --unofficial`, `routines`) needs a token that can read sessions. A token from `claude setup-token` cannot (HTTP 401). Opt in once, at a terminal, to let the program use Claude Code's own login:
+- **The standalone program** (`events`, `watch`, `cast`, `collect`, the account view of `list`, `routines`) needs a token that can read sessions. A token from `claude setup-token` cannot (HTTP 401). Opt in once, at a terminal, to let the program use Claude Code's own login:
 
 ```bash
 cloud-sessions auth use-claude-login     # type yes; it refuses to run without a terminal
@@ -64,6 +64,13 @@ Other forms: a token that can read, kept in a private 0600 file (`printf '%s' "$
 
 ## 4. First steps
 
+Run `cloud-sessions list` (or `/cloud-list`) first. It says what to do next:
+
+- Login not allowed yet: it shows the sessions tracked on this computer (none on a new computer) and the hint `cloud-sessions auth use-claude-login (asks for a typed yes)`. Run that in a terminal; then `list` shows the sessions and routines of your account.
+- No sessions yet: it says how to start one (`/cloud-start`, or `claude --cloud` in a repository checkout) or track one (`/cloud-track <link>`).
+- The account list failed: it shows the tracked sessions and one line with the reason and the fix.
+
+
 Before the first start, allow the repository once and run `claude` once in that folder to accept its trust prompt:
 
 ```bash
@@ -73,7 +80,8 @@ cloud-sessions allow --dir ~/code/my-repo      # or type /cloud-allow in Claude 
 | Step | In Claude Code | In a terminal |
 | --- | --- | --- |
 | Start a session for the current repository (costs cloud usage, 5 a day by default) | `/cloud-start <prompt>` | `cloud-sessions start --dir ~/code/my-repo --prompt "…"` |
-| List the sessions this computer started or tracks | `/cloud-list` | `cloud-sessions list` |
+| List your account's sessions and routines (after `auth use-claude-login`), else the tracked ones | `/cloud-list` | `cloud-sessions list` |
+| List only the sessions this computer started or tracks | `/cloud-list --tracked` | `cloud-sessions list --tracked` |
 | Track a session started elsewhere (the app, another computer, a routine) | `/cloud-track <link or ID>` | `cloud-sessions track <link or ID> --title "…"` |
 | Read the events of a session | `/cloud-read <link or ID>` | `cloud-sessions events <session>` |
 | Follow a session until it finishes | `/cloud-watch <link or ID> [seconds]` | `cloud-sessions watch <session>` |
