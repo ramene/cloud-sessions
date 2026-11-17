@@ -71,7 +71,7 @@ dependencies = [
 
 [[package]]
 name = "cloud-sessions-cli"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cloud-sessions-core",
  "keyring",
@@ -80,7 +80,7 @@ dependencies = [
 
 [[package]]
 name = "cloud-sessions-core"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "chrono",
  "portable-pty",

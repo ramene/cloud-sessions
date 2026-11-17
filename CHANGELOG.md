@@ -3,6 +3,15 @@
 The Cloud sessions mod (`cloud-sessions-core`, the `cloud-sessions` CLI and the Claude Code plugin) is versioned
 together and released on tags named `cloud-sessions-vX.Y.Z`.
 
+## 0.2.4
+
+Release of the MCP registry work. The released 0.2.3 binary did not carry the tool hints that main already had; 0.2.4 ships them.
+
+- Tool hints: all seven MCP tools declare the four hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`). The released 0.2.3 binary lacked `destructiveHint` on all seven and `idempotentHint` on most.
+- Clean start: with an empty HOME and no login, `tools/list` answers every tool with its four hints (`clean_env` test; s554).
+- Registry image: `server.json` moves to the 2025-12-11 schema (`registryType`; the obsolete package `version` is dropped); its image is `ghcr.io/ramene/cloud-sessions:0.2.4`. The Dockerfile copies the CA bundle from its build stage and carries the labels `io.modelcontextprotocol.server.name` and `org.opencontainers.image.source`. New `.github/workflows/ghcr.yml` publishes that image (`:0.2.4` and `:latest`) on a `cloud-sessions-v*` tag or by hand.
+- Version places set to 0.2.4: both marketplace manifests, the plugin manifest, `claude-mod/cloud-sessions/VERSION` (the launcher's pin), `cloud-sessions-cli` and `cloud-sessions-core` Cargo.toml (the CLI's dependency pin too), `Cargo.lock`, `server.json`.
+
 ## 0.2.3
 
 Fixes #1: `list` showed only the sessions tracked on this computer, and an empty first run gave no guidance.

@@ -6,6 +6,8 @@ COPY . .
 RUN cargo build --release --locked -p cloud-sessions-cli
 
 FROM debian:stable-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /src/target/release/cloud-sessions /usr/local/bin/cloud-sessions
+LABEL io.modelcontextprotocol.server.name="io.github.ramene/cloud-sessions"
+LABEL org.opencontainers.image.source="https://github.com/ramene/cloud-sessions"
 ENTRYPOINT ["cloud-sessions", "mcp"]

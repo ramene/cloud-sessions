@@ -1,17 +1,16 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.ramene/cloud-sessions",
   "description": "Start, read and send to Claude Code cloud sessions from an MCP client.",
   "repository": {
     "url": "https://github.com/ramene/cloud-sessions",
     "source": "github"
   },
-  "version": "0.2.3",
+  "version": "0.2.4",
   "packages": [
     {
-      "registry_type": "oci",
-      "identifier": "ghcr.io/ramene/cloud-sessions:0.2.3",
-      "version": "0.2.3",
+      "registryType": "oci",
+      "identifier": "ghcr.io/ramene/cloud-sessions:0.2.4",
       "transport": {
         "type": "stdio"
       }
