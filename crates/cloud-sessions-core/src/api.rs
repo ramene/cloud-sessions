@@ -90,7 +90,7 @@ impl Client {
     }
 
     fn agent(&self, read: Duration, total: Option<Duration>) -> ureq::Agent {
-        let mut builder = ureq::AgentBuilder::new().redirects(0).timeout_connect(Duration::from_secs(10)).timeout_read(read).user_agent(concat!("cloud-sessions-core/", env!("CARGO_PKG_VERSION")));
+        let mut builder = ureq::AgentBuilder::new().redirects(0).timeout_connect(Duration::from_secs(10)).timeout_read(read).user_agent(&format!("cloud-sessions-core/{}", crate::VERSION));
         if let Some(total) = total { builder = builder.timeout(total); }
         if !loopback(&self.base) { builder = builder.try_proxy_from_env(true); }
         builder.build()

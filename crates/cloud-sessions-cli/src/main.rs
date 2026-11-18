@@ -38,7 +38,7 @@ fn main() {
     let ctx = ctx_from_env();
     let outcome = match command {
         "-h" | "--help" | "help" => { println!("{USAGE}"); return; }
-        "-V" | "--version" | "version" => { println!("cloud-sessions {}", env!("CARGO_PKG_VERSION")); return; }
+        "-V" | "--version" | "version" => { println!("cloud-sessions {}", cloud_sessions_cli::VERSION); return; }
         "mcp" => {
             if let Err(error) = mcp::serve(&ctx, &mut stdin().lock(), &mut stdout().lock()) { fail(&error.to_string()); }
             return;
