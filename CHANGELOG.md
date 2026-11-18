@@ -3,6 +3,14 @@
 The Cloud sessions mod (`cloud-sessions-core`, the `cloud-sessions` CLI and the Claude Code plugin) is versioned
 together and released on tags named `cloud-sessions-vX.Y.Z`.
 
+## 0.2.5
+
+- s589 (M8ven grade): the seven tools keep their title and the four hints as booleans; the MCP tool-annotations schema of revision 2025-06-18 is the reference; the test checks each tool.
+- The release image is tested before the push: the workflow pipes `initialize` and `tools/list` into `docker run -i` on the built image and fails when there is no answer or a tool lacks a hint.
+- Version is a constant (`VERSION`) in `cloud-sessions-cli` and `cloud-sessions-core`, checked against `Cargo.toml`; no `CARGO_PKG_VERSION` environment read is left.
+- Publisher files: SECURITY.md, dependabot, a pinned toolchain, `deny.toml`, and a CI workflow for the tests and `cargo deny`.
+- `server.json` and the plugin manifests name 0.2.5 (image `ghcr.io/ramene/cloud-sessions:0.2.5`).
+
 ## 0.2.4
 
 Release of the MCP registry work. The released 0.2.3 binary did not carry the tool hints that main already had; 0.2.4 ships them.

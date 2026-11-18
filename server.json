@@ -6,11 +6,11 @@
     "url": "https://github.com/ramene/cloud-sessions",
     "source": "github"
   },
-  "version": "0.2.4",
+  "version": "0.2.5",
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/ramene/cloud-sessions:0.2.4",
+      "identifier": "ghcr.io/ramene/cloud-sessions:0.2.5",
       "transport": {
         "type": "stdio"
       }
